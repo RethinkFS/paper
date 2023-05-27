@@ -26,5 +26,8 @@ twice: $(REQUIRE) FORCE
 clean: FORCE
 	rm -r $(TEMP)
 
+html:
+	latex2html -split 0 -no_navigation -no_subdir -html_version 4.0,unicode -dir html $(PAPER).tex
+
 FORCE:
-.PHONY: all once clean FORCE
+.PHONY: all once clean FORCE html
