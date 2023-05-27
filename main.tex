@@ -9,6 +9,11 @@
 \usepackage{hcr-cumcm}
 \usepackage[style=gb7714-2015,backend=biber]{biblatex}
 \addbibresource{bibdata.bib}
+
+\newcommand{\subsubsubsection}[1]{\paragraph{#1}\mbox{}\\}
+\setcounter{secnumdepth}{4} % how many sectioning levels to assign numbers to
+\setcounter{tocdepth}{4} % how many sectioning levels to show in ToC
+
 \title{AquaFS 开发设计文档}
 
 \begin{document}
