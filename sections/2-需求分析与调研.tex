@@ -145,10 +145,10 @@ MTD 设备和有 FTL 的设备的对比如图 \ref{flash-mtd-ftl} 所示。在�
 
 \subsubsection{Flash 的特点和分类}
 
-闪存（Flash Memory）是由日本的 舛岡富士雄 （Fujio Muoka）发明的。他分别于1966年和1971年从日本东北大学（Tohoku University）获得学士和博士学位，博士毕业之后他加入了东芝（Toshiba）公司。在东芝工作期间，他分别于1980年和1988年发明了NOR Flash 和 NAND Flash。
+闪存（Flash Memory）是由日本的 舛岡富士雄 （Fujio Muoka）发明的。他分别于1966年和1971年从日本东北大学（Tohoku University）获得学士和博士学位，博士毕业之后他加入了东芝（Toshiba）公司。在东芝工作期间，他分别于1980年和1988年发明了NOR Flash 和 Nand Flash。
 
-目前市面上的闪存主要有两种：NOR Flash 和 NAND Flash，其分类逻辑和原理如图 \ref {flash-nand-nor} 所示。
-一般而言，并行接口的Parallel Flash是基于NOR Flash的；而SSD硬盘，U盘，SD卡，eMMC等通常是基于NAND Flash的。
+目前市面上的闪存主要有两种：NOR Flash 和 Nand Flash，其分类逻辑和原理如图 \ref {flash-nand-nor} 所示。
+一般而言，并行接口的Parallel Flash是基于NOR Flash的；而SSD硬盘，U盘，SD卡，eMMC等通常是基于Nand Flash的。
 
 \begin{figure}[htbp]
   \centering
@@ -157,5 +157,28 @@ MTD 设备和有 FTL 的设备的对比如图 \ref{flash-mtd-ftl} 所示。在�
   \label{flash-nand-nor}
 \end{figure}
 
-\subsubsection{}
+\subsubsection{Nand Flash}
 
+Nand Flash 是一种非易失性存储器，具有访问速度快、存储密度高、成本低的特点。Nand Flash 的读写操作都是以页为单位进行的，而且每次写操作都需要先擦除整个块，这使得 Nand Flash 更适合用于存储大量数据，而不适合用于执行代码和固件更新等应用。然而，Nand Flash 的读写速度快，成本低，是目前大多数嵌入式设备或消费级、商业级电子产品的主要存储介质。
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.85\textwidth]{fig/flash-nand-feature.png}
+  \caption{K9F1G08U0F-5IB0 特性}
+  \label{flash-nand-feature}
+\end{figure}
+
+为了详细了解 Nand Flash 的多种特性，我们专门针对一款常用的 Nand Flash 进行了调研。这款 Nand Flash 的型号是 K9F1G08U0F-5IB0。这是一款来自三星的 SLC Nand，容量为 1Gb，其主要特性如图 \ref{flash-nand-feature} 所示。
+
+\subsubsection{Nor Flash}
+
+NorFlash 是一种非易失性存储器，具有访问速度快、读写寿命长、可靠性高的特点。与 Nand Flash 不同，NorFlash 的读操作可以以随机方式进行，而不需要预先擦除整个块。这使得 NorFlash 更适合用于执行代码和固件更新等应用，可以加速启动时间和提高系统性能。然而，NorFlash 的密度较低，成本较高，不适合用于存储大量数据。
+
+NorFlash 的一些其他特点包括：
+
+\begin{itemize}
+  \item {\bf{高度可靠}}：Nor Flash 可以实现数据的可靠存储和读取，并且具有高度可靠性。
+  \item {\bf{可以执行代码}}：Nor Flash 可以作为代码存储器，可以加快启动时间并提高系统性能。此外，Nor Flash 还支持 XIP（执行内存），它允许 CPU 直接从 Nor Flash 中执行代码，而无需将代码加载到 RAM 中。
+  \item {\bf{读写寿命}}：Nor Flash 的读写寿命比 Nand Flash 长得多，因此它更适合于需要高度可靠性和长寿命的应用程序。
+  \item {\bf{错误概率}}：Nor Flash 读写操作的错误概率很低，这使得它在数据存储和传输方面更加可靠。
+\end{itemize}
