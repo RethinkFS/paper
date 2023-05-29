@@ -17,9 +17,7 @@ Flash介质因本身的擦除特性，给上层文件系统带来与普通磁盘
   \item {\bf{更智能}}：文件系统需要使用多种策略，在软件算法层面平衡性能与寿命
 \end{itemize}
 
-\subsubsection{背景调研}
-
-\subsubsubsection{往年实现分析}
+\subsubsection{往年实现分析}
 
 本题在去年已经有队伍完成，他们的仓库在 \url{https://gitlab.eduxiji.net/why/project788067-124640}。
 在选题之时，我们对其进行了调研。
@@ -105,11 +103,10 @@ YOUBIFS 的系统架构如图 \ref{youbifs} 所示。
 
   \item {\bf{总代码量很大：}} 原版 UBIFS 的代码量就有 1.5 MiB，所以对代码阅读理解能力也有很高的要求。去除重复文件后，使用 CLOC 统计文件行数如表 \ref{youbifs_code} 所示，队伍自己实现的部分暂未统计。
 
-  \begin{table}[h!]
-    \begin{center}
-      \label{youbifs_code}
-      \caption{YOUBIFS 代码统计}
-      \begin{tabular}{l|c|c|c|c}
+  \begin{table}
+    \centering
+  %   \begin{center}
+      \begin{tabular}{lcccc}
         \textbf{Language} & \textbf{files} & \textbf{blank} & \textbf{comment} & \textbf{code} \\
         \hline
         C & 48 & 6044 & 12432 & 30124 \\
@@ -117,8 +114,34 @@ YOUBIFS 的系统架构如图 \ref{youbifs} 所示。
         \hline
         SUM: & 61 & 6757 & 16465 & 34297 \\
       \end{tabular}
-    \end{center}
+  %   \end{center}
+      \caption{YOUBIFS 代码统计}
+      \label{youbifs_code}
   \end{table}
   
 \end{enumerate}
+
+在 YOUBIFS 已经能够完成大部分题目要求的情况下，我们要如何在这个基础上进行改进呢？
+
+依照上面的分析，首先我们可以改变我们文件系统的存储介质。YOUBIFS 使用的是 Nor Flash，那么我们可以选择 Flash 的另一种更加常用更加高性能的品类：Nand Flash。我们的研究基于 Nand Flash，就可以更加贴近实际应用场景，扩展项目的实际用途，也可以更加容易地和其他的文件系统进行对比。
+
+当我们选择基于 Nand Flash 的文件系统，题目需求中的许多方面都出现了新的需求。首先，Nand Flash 的读写单位是页，而 Nor Flash 的读写单位是字节，这就要求我们的文件系统在读写时要考虑到页的边界对齐问题。其次，Nand Flash 之上往往有一层 FTL（Flash Translation Layer），向上隔绝了数据块选择、数据擦除、逻辑物理地址映射等与 Flash 存储介质相关的细节，从而提高了在文件系统层面针对 Flash 进行优化的难度。最后，Nand Flash 的读写速度比 Nor Flash 快，但是擦除速度比 Nor Flash 慢，这就要求我们的文件系统在设计时要考虑到这一点，尽量减少擦除操作的次数。
+
+为了解决这些问题，我们需要对 Nand Flash 的特性进行调研，然后在一种基于 Nand Flash 的文件系统的基础上进行改进。
+
+\subsection{背景调研}
+
+\subsubsection{Flash 的特点和分类}
+
+闪存（Flash Memory）是由日本的 舛岡富士雄 （Fujio Muoka）发明的。他分别于1966年和1971年从日本东北大学（Tohoku University）获得学士和博士学位，博士毕业之后他加入了东芝（Toshiba）公司。在东芝工作期间，他分别于1980年和1988年发明了NOR Flash 和 NAND Flash。
+
+目前市面上的闪存主要有两种：NOR Flash 和 NAND Flash，其分类逻辑和原理如图 \ref {flash-nand-nor} 所示。
+一般而言，并行接口的Parallel Flash是基于NOR Flash的；而SSD硬盘，U盘，SD卡，eMMC等通常是基于NAND Flash的。
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.85\textwidth]{fig/flash-nand-nor.jpg}
+  \caption{Flash 原理与分类}
+  \label{flash-nand-nor}
+\end{figure}
 
