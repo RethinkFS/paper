@@ -125,7 +125,19 @@ YOUBIFS 的系统架构如图 \ref{youbifs} 所示。
 
 依照上面的分析，首先我们可以改变我们文件系统的存储介质。YOUBIFS 使用的是 Nor Flash，那么我们可以选择 Flash 的另一种更加常用更加高性能的品类：Nand Flash。我们的研究基于 Nand Flash，就可以更加贴近实际应用场景，扩展项目的实际用途，也可以更加容易地和其他的文件系统进行对比。
 
-当我们选择基于 Nand Flash 的文件系统，题目需求中的许多方面都出现了新的需求。首先，Nand Flash 的读写单位是页，而 Nor Flash 的读写单位是字节，这就要求我们的文件系统在读写时要考虑到页的边界对齐问题。其次，Nand Flash 之上往往有一层 FTL（Flash Translation Layer），向上隔绝了数据块选择、数据擦除、逻辑物理地址映射等与 Flash 存储介质相关的细节，从而提高了在文件系统层面针对 Flash 进行优化的难度。最后，Nand Flash 的读写速度比 Nor Flash 快，但是擦除速度比 Nor Flash 慢，这就要求我们的文件系统在设计时要考虑到这一点，尽量减少擦除操作的次数。
+其次，当我们选择了 Nand Flash，就多了一个技术实现上的选择。在许多较为低端的嵌入式设备上，主控是直接控制存储设备的绝对地址的。在 Linux Kernel 中，这样直接控制地址的设备被称为 MTD 设备（Memory Technology Device）。
+除了 MTD 设备，还有一种方式是硬件层面实现一个从逻辑地址到绝对地址的映射，从而完成磨损均衡、垃圾回收等功能。这一层转换层叫做 FTL（Flash Translation Layer，FLash 地址转换层），在许多消费级、商业级服务器或者高端嵌入式设备上都会使用 FTL。在 Linux Kernel 中，这样的设备往往分类为块设备，而不是 MTD 设备。
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.7\textwidth]{fig/flash-mtd-ftl.png}
+  \caption{MTD 设备和有 FTL 的设备的对比}
+  \label{flash-mtd-ftl}
+\end{figure}
+
+MTD 设备和有 FTL 的设备的对比如图 \ref{flash-mtd-ftl} 所示。在我们的项目中，我们选择了基于 Nand Flash 的块设备，而不是基于 Nand Flash 的 MTD 设备，这样可以更加贴近实际应用场景，扩展项目的实际用途，也可以更加容易地和其他的文件系统进行对比。
+
+我们选择基于 Nand Flash 与 FTL 的文件系统，题目需求中的许多方面都出现了新的需求。首先，Nand Flash 的读写单位是页，而 Nor Flash 的读写单位是字节，这就要求我们的文件系统在读写时要考虑到页的边界对齐问题。其次，Nand Flash 之上的一层 FTL，向上隔绝了数据块选择、数据擦除、逻辑物理地址映射等与 Flash 存储介质相关的细节，从而提高了在文件系统层面针对 Flash 进行优化的难度。最后，Nand Flash 的读写速度比 Nor Flash 快，但是擦除速度比 Nor Flash 慢，这就要求我们的文件系统在设计时要考虑到这一点，尽量减少擦除操作的次数。
 
 为了解决这些问题，我们需要对 Nand Flash 的特性进行调研，然后在一种基于 Nand Flash 的文件系统的基础上进行改进。
 
@@ -144,4 +156,6 @@ YOUBIFS 的系统架构如图 \ref{youbifs} 所示。
   \caption{Flash 原理与分类}
   \label{flash-nand-nor}
 \end{figure}
+
+\subsubsection{}
 
