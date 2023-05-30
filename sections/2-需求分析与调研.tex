@@ -170,6 +170,39 @@ Nand Flash 是一种非易失性存储器，具有访问速度快、存储密度
 
 为了详细了解 Nand Flash 的多种特性，我们专门针对一款常用的 Nand Flash 进行了调研。这款 Nand Flash 的型号是 K9F1G08U0F-5IB0。这是一款来自三星的 SLC Nand，容量为 1Gb，其主要特性如图 \ref{flash-nand-feature} 所示。
 
+在读写操作失败时，Nand 控制器需要进行一些特殊的处理。将 Datasheet 中的处理方式翻译为中文：在 NAND Flash 存储器中，其使用寿命内可能会出现额外的无效块。请参考资格报告以获取实际数据。应考虑以下可能的故障模式以实现高度可靠的系统。在擦除或编程后状态读取失败的情况下，应进行块替换。因为在页面编程期间的编程状态失败不会影响同一块中其他页面的数据，所以可以通过找到一个已擦除的空块，并重新编程当前目标数据并复制替换块的其余部分，来执行块替换。在读取时必须使用 ECC。为了提高内存空间的效率，建议通过 ECC 回收由于单个位错误而导致的读取或验证失败，而无需进行任何块替换。所述附加块故障率不包括那些被回收的块。写入时错误处理流程如图 \ref{nand-rw-err} 所示。
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.85\textwidth]{fig/nand-rw-err.png}
+  \caption{写入时错误处理流程}
+  \label{nand-rw-err}
+\end{figure}
+
+Nand 由于其以页面为写入单位的特性，使得其在写入时的错误处理流程较为复杂。在写入时，如果发生错误，需要进行块替换。块替换的过程如图 \ref{nand-replace} 所示。
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.85\textwidth]{fig/nand-replace.png}
+  \caption{Nand 块替换流程}
+  \label{nand-replace}
+\end{figure}
+
+由于 Nand Flash 只能以页面为单位进行写入，所以在一个块内，页面必须从该块的LSB（最低有效位）页面到该块的MSB（最高有效位）页面依次编程，禁止随机页面地址编程。在这种情况下，LSB页面的定义是要编程的页面中的LSB。因此，LSB不需要是页面0。
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.85\textwidth]{fig/nand-write-addr.png}
+  \caption{Nand 写入寻址举例}
+  \label{nand-write-addr}
+\end{figure}
+
+这个用于举例的 Flash 芯片已带有 ECC 功能。在编程操作期间，内部ECC逻辑生成ECC。在读取操作期间，设备会自动执行ECC。读取操作执行后，可以发出读取状态命令以识别读取状态，读取状态保持不变，直到执行其他有效命令。这个 Nand Flash 可以自己纠正 4bit 的错误。
+
+即，这款 Nand 芯片内的控制器能够保证在读取时，能够自动执行 ECC，并且能够自动纠正 4bit 的错误。这样，我们在读取时，基本不需要考虑较少比特位的 ECC 的问题。当 Nand 芯片内的控制器检测到无法纠正的 ECC 错误，将会返回错误信息，然后可以根据这个错误信息，进行块替换。如果块替换失败，那么这个块就会被标记为坏块，不再使用。
+
+由此得知，一般 Nand 芯片向外提供的数据接口可以保证数据的正确性，从而上层软硬件可以依赖于 Nand 上的硬件 ECC 提供的数据正确性保证。但是这是在 Nand 使能了 ECC 功能的情况下，如果 Nand 芯片没有使能 ECC 功能，那么上层软硬件就需要自己实现 ECC 算法，来保证数据的正确性。此外，硬件 ECC 功能需要占用额外的磁盘空间，因此，如果对磁盘空间有较高要求，那么可以考虑不使能硬件 ECC 功能。
+
 \subsubsection{Nor Flash}
 
 NorFlash 是一种非易失性存储器，具有访问速度快、读写寿命长、可靠性高的特点。与 Nand Flash 不同，NorFlash 的读操作可以以随机方式进行，而不需要预先擦除整个块。这使得 NorFlash 更适合用于执行代码和固件更新等应用，可以加速启动时间和提高系统性能。然而，NorFlash 的密度较低，成本较高，不适合用于存储大量数据。
