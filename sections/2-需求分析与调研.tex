@@ -356,6 +356,8 @@ ZNS 是 NVMe 最新标准的一部分，它是专用于特殊 SSD 的通用接�
 
 除了傲腾，还有 Open-Channel SSD（OCSSD）。它的主要优化点在于，它将 SSD 的主控和垃圾回收的功能都放到了主机上，而 SSD 只负责读写数据。这样做的好处是，主机可以根据自己的应用场景来优化 SSD 的性能，而且 SSD 的成本也会降低。但是这样做的缺点也很明显，那就是主机的计算压力会变大，而且主机的应用场景也会受到限制。它与 Zoned Storage SSD 的区别主要在于，OCSSD 是将 FTL 放置在主机端，从而减小 SSD 上主控的 DRAM 成本等，而 Zoned Storage SSD 则干脆基本放弃了细粒度的 FTL，只在非常大的 Zone 粒度上做了大块逻辑映射和磨损均衡，从而进一步地让 SSD 服务于计算和存储本身。
 
+\label{zone-type}
+
 在硬件实现上，Zoned Storage SSD 可以设置 Zone 的类型。Zone 可以分为两类：Seq Zone 和 Conv Zone。Seq Zone 正如之前介绍的一样，可以随机读取，但是只能从指定的写指针位置写入数据。而 Conv Zone 则基本可以看作是普通的 SSD，主控仍然会维护这部分地址的 FTL ，所以这部分 Zones 可以像传统 SSD 一般随机读写。这样分类 Zones，更多地是为了兼容现有的应用场景，因为现有的应用场景中，随机读写的需求还是非常多的。而 Seq Zone 则是为了更好地适应新的应用场景，因为新的应用场景中，随机读写的需求并不多，而且 Seq Zone 的性能也更好。
 
 软件方面，ZenFS 则是利用 RocksDB 的文件系统接口将文件放置到原始分区块设备上的区域中。
@@ -743,3 +745,5 @@ ZenFS 内判断当前zone是否需要回收的条件还是比较简单的，是�
   \item 选择一个metazone作为log记录的zone。
   \item 写入superblock和各个zonfile编码到metazone中。
 \end{itemize}
+
+以上基本基于源码结构对 ZenFS 做了一个简单的分析。有了以上的理解分析，我们就可以开始对 ZenFS 进行修改优化了。

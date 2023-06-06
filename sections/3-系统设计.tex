@@ -1,8 +1,8 @@
 \section{系统设计}
 
-AquaFS 是一个模块化的文件系统，以下是 AquaFS 的整体架构图：
-
 \subsection{AquaFS 整体架构}
+
+AquaFS 是一个模块化的文件系统，以下是 AquaFS 的整体架构图：
 
 \begin{figure}[H]
     \centering
@@ -96,13 +96,13 @@ Turner 在文件系统使用过程中保持运行，根据系统当前状态动�
 ExtFS 是主要运行于 Conv Zones 上的针对 ZNS 优化的文件系统。主要特性：
 
 \begin{enumerate}
-    \item 必须原地更新的数据放在 Conv Zones 内，如 Superblock 等（？）
-    \item 适合异地更新的数据通过 AquaZFS 保存在 Seq Zones 内，如 MetaData（？）
+    \item 必须原地更新的数据放在 Conv Zones 内，如 Superblock 等（待定）
+    \item 适合异地更新的数据通过 AquaZFS 保存在 Seq Zones 内，如 MetaData（待定）
     \item 如果智能检测到 AquaZFS 内部分数据不适合 Seq Zones 存储，则转发到 ExtFS 内处理
     \item 用冗余的 inode 等为 AquaZFS 提供索引，可以动态降低其内存消耗
 \end{enumerate}
 
-AquaZFS 是基于 ZenFS 的优化修改，支持以上特性，在保存高性能的同时提升文件系统的灵活性。
+AquaZFS 是基于 ZenFS 的优化修改，支持以上特性，在保持高性能的同时提升文件系统的灵活性。
 
 \subsubsection*{RAID}
 
@@ -114,7 +114,7 @@ AquaZFS 是基于 ZenFS 的优化修改，支持以上特性，在保存高性�
 AquaZFS 在 ZenFS 的基础上实现了 RAID 逻辑，可以在磁盘故障时自动修复数据，且能够根据配置自动使用不同的 RAID 策略。
 
 除了保证数据的正确性，AquaZFS 还可以根据不同的 RAID 策略提供不同的性能。
-当前实现的 RAID0 可以以 N 倍加速单线程数据的读写，RAID1 在提供 N 倍读性能的同时，还可以用简单的冗余策略保证数据的安全性。
+当前实现的 RAID0 可以以 N 倍加速单线程数据的读写，RAID1 在提供 N 倍读性能的同时，还可以用简单的冗余策略保证数据的安全性。此处的 N 的大小取决与 ZNS 硬件设计上能够打开的最多的同时读写 Zone 数量的和。
 
 AquaZFS 的 RAID 有两种基本模式：全盘模式和智能动态分区模式。
 
@@ -167,5 +167,20 @@ RAID 策略信息以记录形式写入 Meta Zones 中，并使用 WAL 配合 Sna
         \item 在当前请求不适合 AquaZFS 的时候将 ExtFS 作为后备
         \item 进行读写请求分离
     \end{enumerate}
+    \item 更加高效：RAID 功能、全异步 IO 加速
 \end{enumerate}
 
+\subsection{开发计划}
+
+由于一些原因，我们原原来的队长没能继续参与到项目中来，所以我们的开发计划也有所改变。
+
+在初赛阶段，考虑到我们的精力和人数，我们优先实现 AquaFS 文件系统的以下几个功能部分：
+
+\begin{enumerate}
+  \item AquaFS 文件系统的 RAID 实现
+  \item AquaFS 的 IO 加速实现
+  \item AquaFS 文件系统的智能调参模块实现
+  \item AquaFS 文件系统的功能和性能测试
+\end{enumerate}
+
+在复赛阶段，我们将继续完善 AquaFS 文件系统其余模块的实现，包括智能数据分类、通用 VFS 文件系统接口等。

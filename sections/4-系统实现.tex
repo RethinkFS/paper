@@ -3,18 +3,17 @@
 针对以上设计，我们实现了 AquaFS 文件系统。
 AquaFS 文件系统的实现基于 ZenFS，我们在 ZenFS 的基础上进行了修改和优化，使其支持 RAID 等功能。
 
-在初赛阶段，由于人手不足等问题，我们优先实现 AquaFS 文件系统的以下几个部分：
-
-\begin{enumerate}
-  \item AquaFS 文件系统的 RAID 实现
-  \item AquaFS 的 IO 加速实现
-  \item AquaFS 文件系统的智能调参模块实现
-  \item AquaFS 文件系统的功能和性能测试
-\end{enumerate}
-
-在复赛阶段，我们将继续完善 AquaFS 文件系统其余模块的实现，包括智能数据分类、通用 VFS 文件系统接口等。
-
 \subsection{AquaFS 文件系统的 RAID 实现}
+
+RAID 是指独立冗余磁盘阵列（Redundant Array of Independent Disks），它是一种数据存储技术，通过将多个硬盘组合起来，实现数据的备份、容错和性能优化。
+
+当我们确定 RAID 方案的时候，首先需要解决的问题是：如何将 ZNS 中的 Zones 组织成 RAID 单位。在传统的 RAID 实现中，RAID 单位是磁盘，而在 ZNS 中，RAID 单位可以是磁盘，也可以是 Zone。我们既可以将 ZNS 中的 Zones 组织成 RAID 单位，也可以将 ZNS 中的磁盘组织成 RAID 单位。我们将 ZNS 中的 Zones 组织成 RAID 单位的方式称为分区 RAID，将 ZNS 中的磁盘组织成 RAID 单位的方式称为全盘 RAID。
+
+那么我们是否能将所有的 Zones 都组织成 RAID 单位呢？答案是否定的。在 Zoned Storage SSD 中，Zone 分为了两种：Seq Zone 和 Conv Zone。更详细的说明在 \ref{zone-type}。这两种 Zones 由于其读写方式的区别，是不能混为一谈的。如果将 Seq Zone 和 Conv Zone 混用，则浪费了主控上专门对 Conv Zones 配置的 DRAM Cache，也会降低 Seq Zone 的读写性能。所以，我们不能将所有的 Zones 都组织成 RAID 单位，而是需要将 Seq Zone 和 Conv Zone 分开组织成 RAID 单位。
+
+除了 Zone 类型的问题，基于 Zone 的 RAID 对磁盘之间的参数也提出了要求。在相同参数的 Zoned Storage SSD 中，不同设备上的 Zone 由于 Zone 大小、块大小等是相同的，可以很方便地组合为 RAID 单位。但是，如果不同设备上的 Zone 参数不同，那么就不能直接组合为 RAID 单位。所以，我们首先实现的是将相同参数的 Zone 组合为 RAID 单位，对不同参数的 Zone 组合为 RAID 单位的实现将在复赛阶段进行探索，例如进行参数转换、分区兼容等尝试。
+
+除此之外，在 ZNS 上实现 RAID 还需要解决 Seq Zones 上的 RAID 算法问题。RAID 0 与 RAID 1 的逻辑相对简单，而 RAID 5、RAID 6 等则需要在 Seq Zone 上实现更复杂的 RAID 算法。这些算法需要文件系统进一步实现各个 Zones 的读写缓存、原子同步写入等功能。我们尝试了 RAID 5 的算法，但是运行效果暂时不理想。在 ZNS 上实现 RAID 5、RAID 6 等算法的难度较大，我们决定在复赛阶段进行探索。
 
 当前 AquaFS 的 RAID 实现主要分为两种：全盘 RAID 和分区 RAID。这两种 RAID 实现的区别在于，全盘 RAID 的 RAID 单位是磁盘，而分区 RAID 的 RAID 单位是 Zone。
 
@@ -84,7 +83,26 @@ RAID C 是我们自定义的一种简单 RAID 格式，它通过 Zones 的合并
 
 RAID 0 和 RAID 1 的实现与传统的 RAID 0 和 RAID 1 的实现类似，RAID 0 将数据分散写入多个设备中，RAID 1 将数据写入多个设备中的一个。RAID 0 和 RAID 1 的实现中的数据排布与 RAID C （图 \ref{raid-c}）基本一致。
 
+传统块设备上 RAID 0 的工作原理如下：
+
+\begin{enumerate}
+  \item 数据被分割成固定大小的块。
+  \item 这些块按照一定的规则，如轮流或按块交替，分配到不同的物理磁盘驱动器上。
+  \item 每个磁盘驱动器只存储一部分数据，因此所有磁盘驱动器都可以同时读写数据，从而提高了读写速度。
+  \item 当需要读取数据时，RAID控制器会从所有驱动器中读取数据块，然后将它们组合成完整的数据块，并将其发送给请求数据的主机。
+\end{enumerate}
+
 RAID 0 在写入时，将会将数据分散写入多个设备中。类似于传统块设备的 Block Size，ZNS 也是有最小写入单位的，也是 Block Size。RAID 0 在读写时，可以将读写请求分割为不同的 Block Size 的读写请求，然后对这些请求重新合并排序，再调用底层的读写接口。
+
+当前我们的实现中，RAID 0 的实现基本与传统 RAID 0 一致。区分的点有以下几个：
+
+\begin{enumerate}
+  \item 数据需要以 Zone 为单位做组织，而不是以设备为单位。即与传统 RAID 0 的最后向上层应用提供一个抽象磁盘设备不同，我们需要向上层应用提供多个抽象的 Zones。
+  \item 数据被分为不同的 Block Size 的块，分得尽量小。
+  \item 当需要读写数据时，RAID 0 会将读请求分割为不同的 Block Size 的读写请求，然后对这些请求重新合并排序，再调用底层的读接口。
+  \item 采用了 Direct IO 加速方案，即绕过 Page Cache，直接读写设备。
+  \item 采用了 io\_uring 加速方案，即使用 io\_uring 作为异步 IO 框架，提高 IO 吞吐量。
+\end{enumerate}
 
 以 RAID 0 读为例，其未经 IO 优化的读流程如下所示：
 
@@ -119,6 +137,10 @@ int Raid0ZonedBlockDevice::Read(char *buf, int size, uint64_t pos,
 
 在上述代码中，我们将读请求分割为不同的 Block Size 的读请求，然后调用底层的读写接口。这样做的好处是，可以将读请求分散到多个设备中，从而提高读性能。不过，上述代码中其实并没有体现 RAID 0 的多设备读优化，还是单线程读取。我们在后文中实现了基于 uring 的多设备并行读优化。
 
+除了读写逻辑，RAID 还需要抽象出 Zones 的统一管理。上层软件使用了 RAID 向上提供的抽象 RAID Zones，那么对这些抽象 RAID Zones 的各种 Zone 操作也应当起到作用。例如，对 RAID 0/1 Zone 的重置操作应当扩散到这个 RAID Zone 对应的所有 Dev Zones；对求一个 RAID Zone 的逻辑写指针值，也应该按照 RAID 逻辑计算逻辑 RAID Zone 内的容量，然后计算已用容量，最后计算出逻辑写指针值。对 Zones 的 Close、Finish 等操作的逻辑类似。
+
+当使用全盘 RAID 1 的时候，还有个可以优化的点，即当组成 RAID 的设备的参数相同时，由于这些设备的 Zone 大小相同，因此可以将这些设备的 Zone 一一对应起来，从而利用写指针的对应关系，不需要对请求进行切分，减轻了一些计算上的开销。
+
 \subsubsection{智能分区 RAID 的实现}
 
 分区 RAID 的实现与全盘 RAID 的实现类似，但是我们在逻辑 Raid Zone 和实际设备 Zone 之间加上了一层基于 Zones 的映射。这些映射是通过 ZenFS 的 Record 写入 MetaZones 内的，将在每次文件系统加载的时候逐步读取加载映射逻辑。
@@ -139,7 +161,9 @@ Zone Raid $n$ 为向上层暴露出的可读写数据 Zone 区域，而其中可
 
 实际代码实现上，除了上述映射逻辑处理，还有许多细节需要考虑。
 
-首先是跨 Zones 读写问题。由于我们添加的映射逻辑，使得我们的数据排布不再是连续的，而是以 Zones 为单位分散的。这就导致了我们的读写请求可能会跨越多个 Zone。这就需要我们在读写时，需要将读写请求分割为不同的 Block Size 的读写请求，然后可能对这些请求重新合并排序，再调用底层的读写接口。
+\textbf{物理块逻辑设备均分问题}：在抽象 RAID Zone 里的 Zones 中，这些块可以来自不同的设备，也可以来自同一个设备。但是为了最大化利用 ZNS 的带宽，我们需要尽量将数据分散写入不同的设备中。
+
+\textbf{跨 Zones 读写问题}：由于我们添加的映射逻辑，使得我们的数据排布不再是连续的，而是以 Zones 为单位分散的。这就导致了我们的读写请求可能会跨越多个 Zone。这就需要我们在读写时，需要将读写请求分割为不同的 Block Size 的读写请求，然后可能对这些请求重新合并排序，再调用底层的读写接口。
 
 在读或写代码中，通过数据段分割并递归调用自身的方式实现跨 Zones 读写的请求分割：
 
@@ -167,10 +191,10 @@ Zone Raid $n$ 为向上层暴露出的可读写数据 Zone 区域，而其中可
     // ...
 \end{lstlisting}
 
-其次是数据后端问题。由于我们是基于 ZonedBlockDeviceBackend 来实现的，而 ZonedBlockDeviceBackend 有多种子类，可以是 libzbd、ZoneFS 甚至是原来实现的全盘 RAID。
+\textbf{数据后端问题}：由于我们是基于 ZonedBlockDeviceBackend 来实现的，而 ZonedBlockDeviceBackend 有多种子类，可以是 libzbd、ZoneFS 甚至是原来实现的全盘 RAID。
 为了进一步简化 IO 调用栈，我们在实现分区 RAID 时，假定数据后端都是 libzbd 提供的数据读写。这在之后可以进一步优化，以支持更多的数据后端，提升 RAID 逻辑的灵活性，如添加 ZoneFS 支持、添加 SPDK 等 Kernel bypass 方案支持等。
 
-除此以外，还需要考虑对 ZenFS 的兼容性问题。ZenFS 在加载的过程中，会对固定的 MetaZones 进行扫描，通过 Magic Number 查找到 Meta Zones 中的可用的超级块，并选择最新的超级块进行文件系统初始化。为了兼容 ZenFS 的 Meta Data 管理逻辑，我们不能改变 MetaZones 的排布，也不能改变超级块的存储逻辑。因此，我们在实现分区 RAID 时，需要保证 MetaZones 的排布不变，超级块的存储逻辑不变，以及超级块的存储位置不变。所以，我们在实现分区 RAID 时，将 MetaZones 的排布和超级块的存储位置都固定在了第一个设备上，进行映射的连续逻辑预分配，这样就可以保证 ZenFS 的兼容性，使得 ZenFS 在加载分区 RAID 时，可以正常加载。
+\textbf{对 ZenFS 的兼容性问题}：ZenFS 在加载的过程中，会对固定的 MetaZones 进行扫描，通过 Magic Number 查找到 Meta Zones 中的可用的超级块，并选择最新的超级块进行文件系统初始化。为了兼容 ZenFS 的 Meta Data 管理逻辑，我们不能改变 MetaZones 的排布，也不能改变超级块的存储逻辑。因此，我们在实现分区 RAID 时，需要保证 MetaZones 的排布不变，超级块的存储逻辑不变，以及超级块的存储位置不变。所以，我们在实现分区 RAID 时，将 MetaZones 的排布和超级块的存储位置都固定在了第一个设备上，进行映射的连续逻辑预分配，这样就可以保证 ZenFS 的兼容性，使得 ZenFS 在加载分区 RAID 时，可以正常加载。
 
 在创建或读取文件系统时的预分配映射：
 
@@ -239,7 +263,11 @@ ScanAndHandleOffline 函数将扫描当前所有盘的数据状态，如果发�
 
 Direct IO 主要的优化逻辑是，将用户态的数据缓冲区直接映射到内核态的页缓存中，从而避免了数据在用户态和内核态之间的拷贝。通过 Direct IO 打开的设备，从设备中获得的数据将直接写入在用户态的数据缓冲区中，而不是先写入内核态的页缓存中，从而减少了一次数据拷贝。
 
-Direct IO 的使用也非常简单，只需要在打开文件时，将 O\_DIRECT 标志传入即可。但是，由于 Direct IO 的使用需要满足一些条件，如文件的偏移量和长度需要是当前系统内存页大小的整数倍，所以在使用 Direct IO 时，需要对文件的偏移量和长度进行调整。
+Direct IO 的使用也非常简单，只需要在打开文件时，将 O\_DIRECT 标志传入即可。但是，由于 Direct IO 的使用需要满足一些条件，如文件的偏移量和长度需要是当前系统内存页大小的整数倍，所以在使用 Direct IO 时，需要对读写对应的内存缓冲区地址和长度进行对齐。具体对齐方式为使用 \verb|posix_memalign| 函数来申请内存，控制参数将申请的内存地址对齐到当前系统内存页大小的整数倍。
+
+\begin{lstlisting}
+  ret = posix_memalign((void**)&buffer, sysconf(_SC_PAGESIZE), phys_sz);
+\end{lstlisting}
 
 我们发现，在我们的加速方案中，Direct IO 可以与更多的 IO 加速方案并存。如在我们的加速方案中，我们可以使用 io\_uring 来加速 IO 操作，而 io\_uring 也可以与 Direct IO 并存。
 
