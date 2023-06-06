@@ -83,7 +83,7 @@ RAID C 是我们自定义的一种简单 RAID 格式，它通过 Zones 的合并
 
 RAID 0 和 RAID 1 的实现与传统的 RAID 0 和 RAID 1 的实现类似，RAID 0 将数据分散写入多个设备中，RAID 1 将数据写入多个设备中的一个。RAID 0 和 RAID 1 的实现中的数据排布与 RAID C （图 \ref{raid-c}）基本一致。
 
-传统块设备上 RAID 0 的工作原理如下：
+传统块设备上 RAID 0 的工作原理如下：\cite{chen_raid_1994}
 
 \begin{enumerate}
   \item 数据被分割成固定大小的块。
@@ -233,7 +233,7 @@ Zone Raid $n$ 为向上层暴露出的可读写数据 Zone 区域，而其中可
 
 在分区 RAID 故障处理方面，我们实现了基于分区 RAID 的故障处理方案。其主要思路是，当发现设备故障时，将故障设备的所有分区设置为 Offline 状态，然后将所有的分区重新映射到其他设备上，以保证数据的可用性。
 
-由于在调研中我们发现，Nand Flash 向上提供的数据一般含有 ECC 校验和纠错，且 ZenFS 中的 Record 也有 CRC 校验和，所以我们认为在数据传输过程中，较少比特数据的完整性是可以保证的。所以，我们在实现分区 RAID 故障处理时，仅考虑大块数据的完整性恢复，而不考虑小块数据的完整性。
+由于在调研中我们发现，Nand Flash 向上提供的数据一般含有 ECC 校验和纠错（见章节\ref{nand-flash}），且 ZenFS 中的 Record 也有 CRC 校验和，所以我们认为在数据传输过程中，较少比特数据的完整性是可以保证的\cite{schroeder_flash_nodate}。所以，我们在实现分区 RAID 故障处理时，仅考虑大块数据的完整性恢复，而不考虑小块数据的完整性。
 
 \begin{lstlisting}
   // 在数据操作函数中
@@ -259,7 +259,7 @@ ScanAndHandleOffline 函数将扫描当前所有盘的数据状态，如果发�
 
 在上文中，我们已经介绍了 AquaFS 的 RAID 方案，但是由于是比较初级的版本，很多代码并没有进行并行优化，仍然是单线程的。所以，我们在实现 IO 加速方面，主要是对 RAID 下的 IO 操作进行并行优化。
 
-在我们实现之前，ZenFS 的 IO 优化主要是从 RocksDB 中继承而来。RocksDB 中可以使用 Direct IO 来读写文件，以避免数据在用户态和内核态之间的拷贝。其 Direct IO 优化既可以用于 RocksDB 的 PosixFileSystem 常规文件系统后端，也可以用于 RocksDB 的 ZenFS 文件系统后端。
+在我们实现之前，ZenFS 的 IO 优化主要是从 RocksDB 中继承而来。RocksDB 中可以使用 Direct IO \cite{bjorling_linux_2013} 来读写文件，以避免数据在用户态和内核态之间的拷贝。其 Direct IO 优化既可以用于 RocksDB 的 PosixFileSystem 常规文件系统后端，也可以用于 RocksDB 的 ZenFS 文件系统后端。
 
 Direct IO 主要的优化逻辑是，将用户态的数据缓冲区直接映射到内核态的页缓存中，从而避免了数据在用户态和内核态之间的拷贝。通过 Direct IO 打开的设备，从设备中获得的数据将直接写入在用户态的数据缓冲区中，而不是先写入内核态的页缓存中，从而减少了一次数据拷贝。
 
