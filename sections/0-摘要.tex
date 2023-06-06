@@ -9,7 +9,12 @@ AquaFS 是一个以 ZenFS 为原型的适用于 Zoned Storage SSD 的文件系�
 
 初赛阶段进度情况如表 \ref{progress} 所示。
 
-\input{sections/progress}
+\begin{table}[htbp]
+  \centering
+  \caption{初赛进度情况}
+  \label{progress}
+  \input{sections/progress}
+\end{table}
 
 使用 RocksDB 随机读写测试来测试 RAID 模块实现的数据正确性，结果如表 \ref{test-data} 所示。在全盘、分区 RAID 情况下进行 RocksDB 数据库读写并且测试通过，RAID 实现的正确性可以得到验证。
 
