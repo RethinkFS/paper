@@ -358,6 +358,36 @@ io\_uring 的使用也非常简单，只需要提交 SQE 到 ring buffer 中，�
 
 总之，我们在 AquaFS 中实现了 io\_uring 和 C++20 协程 的优化，从而进一步加速了 AquaFS 的 IO 操作。
 
+\subsection{辅助文件系统 ExtFS 的实现}
+
+为了进一步提高 AquaFS 的性能，我们还实现了辅助文件系统 ExtFS。
+
+ExtFS 是一个基于 Ext2 文件系统的辅助文件系统，其主要用于辅助存储 AquaZFS 的元数据，如文件的元数据、目录的元数据、文件的数据块映射表等，同时可以分担 AquaZFS 的处理压力。在 RocksDB 数据量特别大的时候，AquaFS 的元数据量同样较大，甚至可能占用几个 GiB 的内存，所以我们可以选择将其存储在 ExtFS 中，从而一定程度上减小 AquaFS 对主机的内存压力。
+
+由于此文件系统设计的时候，我们暂未选定 ZenFS 作为基础参考，所以 当前 ExtFS 的设计是参照 Ext2 实现的，兼容 Ext2 rev0.0 版本。ExtFS 的基本布局如图 \ref{extfs-layout} 所示，其 inode 寻址方式如图 \ref{extfs-inode}。
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.7\textwidth]{fig/extfs-layout}
+  \caption{ExtFS 基本布局}
+  \label{extfs-layout}
+\end{figure}
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.7\textwidth]{fig/extfs-inode}
+  \caption{ExtFS inode 寻址方式}
+  \label{extfs-inode}
+\end{figure}
+
+当前，ExtFS 的基本布局与 Ext2 基本一致，主要包括超级块、组描述符表、索引节点表、数据块区域等。其中，超级块用于存储文件系统的基本信息，如文件系统的大小、索引节点表的起始位置、数据块区域的起始位置等。组描述符表用于存储每个组的信息，如索引节点位图的起始位置、数据块位图的起始位置、索引节点表的起始位置等。索引节点表用于存储文件的元数据，如文件的大小、文件的权限、文件的创建时间等。数据块区域用于存储文件的数据块。
+
+由于 ZNS 可以支持 Conv Zones，这些 Zones 与 Seq Zones 共存在同一个设备中，所以我们可以将 ExtFS 的数据块区域、inode 区域等需要原地更新的数据存储在 Conv Zones 中。
+
+Ext4 对于连续大文件存储的针对性优化是它的 Extent 结构。Extent 是一种连续的数据块，它可以存储多个数据块，从而减少索引节点的数量，提高文件系统的性能。在 ExtFS 中，我们可以实现一种存储在 Seq Zones 上的 Extent 结构，从而进一步提高 ExtFS 的性能和磁盘利用率。
+
+当前，ExtFS 的实现还不完善，我们还没有实现 ExtFS 的日志系统、Extent 结构等。现在的 ExtFS 是基于 Rust 语言和 FUSE 接口实现的一个简单的 inode 文件系统，并且有一个内建的块缓存系统。不过经过多种测试，它的实现基本是没有问题的。当前 ExtFS 仍然在建设当中，我们将在后续的工作中进一步完善 ExtFS 的设计。ExtFS 的存在可以促进我们对于融合文件系统的研究，同时也可以为后续的工作提供一个基础。
+
 \subsection{AquaFS 文件系统的智能调参模块实现}
 
 智能调参模块方面，实现了基于方差的重要参数选择方案和基于高斯过程回归的参数调整方案。

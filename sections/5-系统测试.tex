@@ -10,7 +10,7 @@
 
 测试环境为：Intel(R) Core(TM) i7-12700 CPU，内存 40GB 3200MHz；系统为 Archlinux，Linux 内核版本 6.3.5-arhc1-1。由于 libzbd、ZoneFS、nvmevirt 等都需要比较高的内核版本，于是这里直接一步到位地使用了最新的 Linux Kernel mainline。
 
-\subsubsection{数据完整性测试}
+\subsubsection{AquaZFS 数据完整性测试}
 
 由于 AquaZFS 是作为一个插件运行在 RocksDB 的文件系统层上的，所以可以使用 RocksDB 来验证其数据完整性。我们使用 RocksDB 的 db\_bench 工具进行测试，测试结果如表 \ref{test-data} 所示。
 
@@ -166,6 +166,89 @@ db\_bench 除了表 \ref{test-data} 中的，还需要添加如下参数：
   \item \verb|entry_SYSCALL_64|：当前仍然使用内核态的 \verb|open|、\verb|read|、\verb|write| 等系统调用，导致系统频繁地从用户态切换到内核态，导致性能瓶颈。
   \item \verb|io_submit_sqes|：正在使用 io\_uring 的软件层面实现，可能使用方法还有可以优化的地方，造成 io\_uring 中一部分数据的锁争用。
 \end{enumerate}
+
+\subsubsection{ExtFS 功能和性能测试}
+
+为了测试我们 ExtFS 的功能正确性，我们使用了本校操作系统实验课程中的测试脚本，对 ExtFS 进行了完整的功能测试，测试结果如下所示：
+
+\begin{lstlisting}[language=bash]
+  $ ./test.sh
+  开始mount, mkdir, touch, ls, read&write, cp, umount测试测试脚本工程根目录: /home/chiro/os/fuse-ext2/fs/rfs/rfs/tests
+  测试用例: /home/chiro/os/fuse-ext2/fs/rfs/rfs/tests/stages/mount.sh
+  测试用例: /home/chiro/os/fuse-ext2/fs/rfs/rfs/tests/stages/mkdir.sh
+  测试用例: /home/chiro/os/fuse-ext2/fs/rfs/rfs/tests/stages/touch.sh
+  测试用例: /home/chiro/os/fuse-ext2/fs/rfs/rfs/tests/stages/ls.sh
+  测试用例: /home/chiro/os/fuse-ext2/fs/rfs/rfs/tests/stages/remount.sh
+  测试用例: /home/chiro/os/fuse-ext2/fs/rfs/rfs/tests/stages/rw.sh
+  测试用例: /home/chiro/os/fuse-ext2/fs/rfs/rfs/tests/stages/cp.sh
+  ============================================================================================================================    Finished dev [unoptimized + debuginfo] target(s) in 0.05s
+       Running `/home/chiro/os/fuse-ext2/fs/rfs/rfs/target/debug/rfs --device=/home/chiro/ddriver -q /home/chiro/os/fuse-ext2/fs/rfs/rfs/tests/mnt`
+  pass: case 1 - mount
+  ============================================================================================================================pass: case 2.1 - mkdir /home/chiro/os/fuse-ext2/fs/rfs/rfs/tests/mnt/dir0
+  pass: case 2.2 - mkdir /home/chiro/os/fuse-ext2/fs/rfs/rfs/tests/mnt/dir0/dir0
+  pass: case 2.3 - mkdir /home/chiro/os/fuse-ext2/fs/rfs/rfs/tests/mnt/dir0/dir0/dir0
+  pass: case 2.4 - mkdir /home/chiro/os/fuse-ext2/fs/rfs/rfs/tests/mnt/dir1
+  ============================================================================================================================pass: case 3.1 - touch /home/chiro/os/fuse-ext2/fs/rfs/rfs/tests/mnt/file0
+  pass: case 3.2 - touch /home/chiro/os/fuse-ext2/fs/rfs/rfs/tests/mnt/file1
+  pass: case 3.3 - touch /home/chiro/os/fuse-ext2/fs/rfs/rfs/tests/mnt/dir0/file1
+  pass: case 3.4 - touch /home/chiro/os/fuse-ext2/fs/rfs/rfs/tests/mnt/dir0/file2
+  pass: case 3.5 - touch /home/chiro/os/fuse-ext2/fs/rfs/rfs/tests/mnt/dir1/file3
+  ============================================================================================================================pass: case 4.1 - ls /home/chiro/os/fuse-ext2/fs/rfs/rfs/tests/mnt/
+  pass: case 4.2 - ls /home/chiro/os/fuse-ext2/fs/rfs/rfs/tests/mnt/dir0
+  pass: case 4.3 - ls /home/chiro/os/fuse-ext2/fs/rfs/rfs/tests/mnt/dir0/dir1
+  pass: case 4.4 - ls /home/chiro/os/fuse-ext2/fs/rfs/rfs/tests/mnt/dir0/dir1/dir2
+  ============================================================================================================================    Finished dev [unoptimized + debuginfo] target(s) in 0.05s
+       Running `/home/chiro/os/fuse-ext2/fs/rfs/rfs/target/debug/rfs --device=/home/chiro/ddriver -q /home/chiro/os/fuse-ext2/fs/rfs/rfs/tests/mnt`
+  pass: case 5.1 - umount /home/chiro/os/fuse-ext2/fs/rfs/rfs/tests/mnt
+  pass: case 5.2 - check bitmap
+  ============================================================================================================================    Finished dev [unoptimized + debuginfo] target(s) in 0.06s
+       Running `/home/chiro/os/fuse-ext2/fs/rfs/rfs/target/debug/rfs --device=/home/chiro/ddriver -q /home/chiro/os/fuse-ext2/fs/rfs/rfs/tests/mnt`
+  pass: case 6.1 - write /home/chiro/os/fuse-ext2/fs/rfs/rfs/tests/mnt/file0
+  pass: case 6.2 - read /home/chiro/os/fuse-ext2/fs/rfs/rfs/tests/mnt/file0
+  ============================================================================================================================pass: case 7.1 - prepare content of /home/chiro/os/fuse-ext2/fs/rfs/rfs/tests/mnt/file9
+  pass: case 7.2 - copy /home/chiro/os/fuse-ext2/fs/rfs/rfs/tests/mnt/file9 to /home/chiro/os/fuse-ext2/fs/rfs/rfs/tests/mnt/file10
+  ============================================================================================================================ 
+  Score: 34/34
+  pass: 通过所有测试 (34/34)
+\end{lstlisting}
+
+接着使用 \verb|dd| 工具，在本机的普通 1TiB SSD 上进行了简单的单文件读写测试：
+
+\begin{lstlisting}[language=bash]
+$ dd if=/dev/random of=mnt/random bs=1MiB count=64
+输入了 64+0 块记录输出了 64+0 块记录67108864 字节 (67 MB, 64 MiB) 已复制，5.88972 s，11.4 MB/s
+$ dd of=/dev/null if=mnt/random bs=1MiB count=64
+输入了 64+0 块记录输出了 64+0 块记录67108864 字节 (67 MB, 64 MiB) 已复制，0.635838 s，106 MB/s
+\end{lstlisting}
+
+使用实验中的脚本进行读写性能测试，其测试逻辑为对文件中的某一固定的块反复读写：
+
+\begin{lstlisting}
+// 关闭模拟磁盘延迟，并且打开了缓存
+Test loop: 1000000, Cache Blks: 512
+  Finished release [optimized] target(s) in 0.05s
+   Running `target/release/rfs --format -q -c --cache_size 512 /home/chiro/mnt`
+Time: 30815.510034561157ms BW: 253.52492920733374MB/s
+// 关闭模拟磁盘延迟，并且关闭了缓存
+Test loop: 100000, Cache Blks: 0
+  Finished release [optimized] target(s) in 0.05s
+   Running `target/release/rfs --format -q /home/chiro/mnt`
+Time: 8691.662073135376ms BW: 89.88499477156695MB/s
+// 打开了模拟磁盘延迟，并且关闭了缓存
+Test loop: 1000000, Cache Blks: 512
+  Finished release [optimized] target(s) in 0.06s
+   Running `target/release/rfs --format -q --latency -c --cache_size 512 /home/chiro/mnt`
+Time: 30927.71863937378ms BW: 252.6051174707074MB/s
+// 打开了模拟磁盘延迟，并且关闭了缓存
+Test loop: 100, Cache Blks: 0
+  Finished release [optimized] target(s) in 0.05s
+   Running `target/release/rfs --format -q --latency /home/chiro/mnt`
+Time: 9035.56513786316ms BW: 0.08646387780728894MB/s
+\end{lstlisting}
+
+可以看到，关闭缓存后，读写性能相比有缓存的大幅下降；而开启缓存后，读写性能相比无缓存的大幅提升。ExtFS 上的缓存工作正常且非常有效。在关闭了手动管理的缓存后，由于 Linux 本身为块设备提供了缓存，因此在不模拟磁盘延迟时关闭了手动管理的缓存，读写性能并没有下降太多。
+
+由于 ExtFS 完成度还不高，所以 ExtFS 暂时还不是本项目的重点，后续会继续完善 ExtFS 的功能。
 
 \subsection{AquaTurnner 智能调参模块测试}
 

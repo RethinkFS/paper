@@ -342,7 +342,7 @@ ZenFS 是一个 RocksDB 的文件系统插件，它利用 RocksDB 的文件系�
 
 ZenFS 是一种特殊的“文件系统”。与其说是一种文件系统，不如说是一种全新的软硬件协同的系统中的一部分。它通过尽量将原本不可知的 FTL 映射和垃圾回收的过程暴露给上层，使得上层可以更好地利用 SSD 的特性。ZenFS 通过将文件分成多个区域并利用写入生命周期提示来共同定位具有相似生命周期的数据，与传统的块设备相比，系统写入放大大大降低了。ZenFS 确保文件系统或磁盘上没有后台垃圾收集，从而提高吞吐量、尾部延迟和磁盘耐久性方面的性能。
 
-硬件方面，ZenFS 基于 Zoned Storage SSD 和 ZNS（Zoned Namespaces）。
+硬件方面，ZenFS 基于 Zoned Storage SSD 和 ZNS（Zoned Namespace SSD）。
 
 ZNS 是 NVMe 最新标准的一部分，它是专用于特殊 SSD 的通用接口，能够将更多的信息暴露到主机上，利用主机的应用场景信息来优化 SSD 的性能。而 Zoned Storage SSD 就是专门为 ZNS 而设计的 SSD，它将 SSD 的内部划分为多个区域，每个区域都有自己的写入指针，不支持随机写入而是只支持从当前写指针写入，从而尽可能地避免了底层主控上的逻辑映射和垃圾回收。普通 SSD 的主控掌握了逻辑地址到物理地址的映射，并且在主机不可控的情况下执行垃圾回收（尽管有 Trim 命令的支持\cite{liang_itrim_2021}），而 Zoned Storage SSD 的垃圾回收机制是由主机来控制的，这样就可以最大程度上地减小写入放大和读写波动，并且能够完全消除硬件预留的空间，从而提高了 SSD 的性能利用率。Zones 的地址空间和写逻辑如图 \ref{zns} 所示。
 
@@ -387,7 +387,7 @@ RocksDB 的 LST-Tree 有多个层次，每个层次都有自己的 SSTable。在
     \label{zenfs}
 \end{figure}
 
-\subsubsubsection{Zone}
+\textbf{Zone}
 
 \begin{lstlisting}
   class Zone {
@@ -409,7 +409,7 @@ RocksDB 的 LST-Tree 有多个层次，每个层次都有自己的 SSTable。在
 一个Zone需要有所属块设备，起始地址和写指针，生命周期和空间相关的维护。
 Zone中的方法有重置Zone，判断是否为空或者是否写满，往写指针后面添加数据等等。
 
-\subsubsubsection{ZoneList}
+\textbf{ZoneList}
 
 \begin{lstlisting}
   class ZoneList {
@@ -421,7 +421,7 @@ Zone中的方法有重置Zone，判断是否为空或者是否写满，往写指
 
 由于一个 Zoned Storage SSD 上的 Zone 一般比较大，Zone 的数量并不多，所以 ZenFS 要求数据后端要能够快速地提供一个指向 Zones 信息列表的指针，然后通过这个指针就可以快速地求取 Zones 的信息，例如某个 Zone 的起始地址、容量、写指针、是否下线、是否显式打开等。
 
-\subsubsubsection{ZonedBlockDeviceBackend}
+\textbf{ZonedBlockDeviceBackend}
 
 ZonedBlockDeviceBackend是用来和底层设备交互需要经过的接口，这个接口将底层的ZoneList全部抽象成内存中连续的ZoneList并进行操作。
 
@@ -449,7 +449,7 @@ backend有两种类型分别是：
 
 当然，在我们实现了 RAID 之后，这里添加了 backend 类型 kRAID，用来表示这个 backend 是一个 被 RAID 后的数据后端。
 
-\subsubsubsection{ZonedBlockDevice}
+\textbf{ZonedBlockDevice}
 
 \begin{lstlisting}
   class ZonedBlockDevice {
@@ -515,7 +515,7 @@ ZonedBlockDevice重要的功能应该是操作zone，其分配释放相关操作
 
 而ZonedBlockDevice的读写数据，则基本直接调用ZonedBlockDeviceBackend的相关接口，即交给下一层处理。
 
-\subsubsubsection{Snapshot}
+\textbf{Snapshot}
 
 ZenFS 的 Snapshot 功能，有多种存储结构的 Snapshot，其记录下某一个确定时间的各个结构的基本信息，从而实现 WAL 结构下的数据一致性保持和快照恢复功能。
 
@@ -565,7 +565,7 @@ ZenFS 的 Snapshot 功能，有多种存储结构的 Snapshot，其记录下某�
    
 \end{lstlisting}
 
-\subsubsubsection{ZoneExtent}
+\textbf{ZoneExtent}
 
 ZoneFs的文件内容是由多个extent组成的，每个extent都放在一个zone里面，extent不能跨zone存储。
 
@@ -583,7 +583,7 @@ ZoneFs的文件内容是由多个extent组成的，每个extent都放在一个zo
    };   
 \end{lstlisting}
 
-\subsubsubsection{ZoneFile}
+\textbf{ZoneFile}
 
 \begin{lstlisting}
   class ZoneFile {
@@ -639,7 +639,7 @@ sparse方式的zone中会将长度记录计入，而普通的zone只会一直app
 
 除此之外，zonefs还有实现了RocksDB的FSWritableFile接口以支持顺序写的方法，实现了FSSequentialFile接口以实现顺序读，FSRandomAccessFile接口以实现随机读。
 
-\subsubsubsection{SuperBlock}
+\textbf{SuperBlock}
 
 \begin{lstlisting}
   class Superblock {
@@ -662,7 +662,7 @@ ZenFS 的 SuperBlock 超级块相比其他文件系统的超级块要简单很�
 
 ZenFS 的靠近实际硬件的设计使得它更加简洁高效，但是它的预留修改空间也留足了，为我们今后的修改优化提供了便利。我们全盘 RAID 的实现就是利用了它的超级块的预留空间。
 
-\subsubsubsection{ZenMetaLog}
+\textbf{ZenMetaLog}
 
 \begin{lstlisting}
   class ZenMetaLog {
@@ -702,7 +702,7 @@ zenmetalog加入的record是如图\ref{meta_form}形式，首先存储的是由�
   \label{manipulate_form}
 \end{figure}
 
-\subsubsubsection{ZenFS}
+\textbf{ZenFS}
 
 \begin{lstlisting}
   class ZenFS : public FileSystemWrapper {
