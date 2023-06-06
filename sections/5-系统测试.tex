@@ -263,7 +263,7 @@ Time: 9035.56513786316ms BW: 0.08646387780728894MB/s
 
 设定参数进行AquaTuner的参数推荐流程，离散参数直接指定：
 
-\begin{lstlisting}
+\begin{lstlisting}[language=Python]
 SECT_SIZE_PARAM = 128
 ZONE_SIZE_PARAM = 64
 \end{lstlisting}
@@ -272,7 +272,7 @@ ZONE_SIZE_PARAM = 64
 
 接下来利用db\_bench进行参数跑分以及收集参数和目标值：
 
-\begin{lstlisting}
+\begin{lstlisting}[language=Python]
   pre_throughput = 0
   now_throughput = 0
   for _ in range(1):
@@ -296,7 +296,7 @@ ZONE_SIZE_PARAM = 64
 
 创建文件系统如下图所示，创建AquaFS的数据模块nullb0和作为log等文件存储的模块/tmp/aquafs。
 
-\begin{lstlisting}
+\begin{lstlisting}[language=bash]
   CREATE_TMP_FILE = "mkdir -p /tmp/aquafs ;\
   sudo ../build/plugin/aquafs/aquafs mkfs --zbd nullb0 --aux-path /tmp/aquafs"
 \end{lstlisting}
@@ -314,7 +314,7 @@ ZONE_SIZE_PARAM = 64
 
 采用接下来的配置再进行测试：
 
-\begin{lstlisting}
+\begin{lstlisting}[language=Python]
 SECT_SIZE_PARAM = 512
 ZONE_SIZE_PARAM = 32
 \end{lstlisting}
