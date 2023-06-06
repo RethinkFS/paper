@@ -147,6 +147,26 @@ db\_bench 除了表 \ref{test-data} 中的，还需要添加如下参数：
   \label{test-recovery}
 \end{figure}
 
+\subsubsection{文件系统性能测试}
+
+由于可以使用内存作为存储后端，我们可以很便利地分析 AquaFS 的性能瓶颈，从而快速优化其性能。
+
+我们使用 Linux \verb|perf| 工具进行性能分析，其中部分分析过程如图 \ref{test-perf} 所示。
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.85\textwidth]{fig/test-perf.png}
+  \caption{ perf 性能分析 }
+  \label{test-perf}
+\end{figure}
+
+可以看到，AquaFS 的性能瓶颈主要在于：
+
+\begin{enumerate}
+  \item \verb|entry_SYSCALL_64|：当前仍然使用内核态的 \verb|open|、\verb|read|、\verb|write| 等系统调用，导致系统频繁地从用户态切换到内核态，导致性能瓶颈。
+  \item \verb|io_submit_sqes|：正在使用 io\_uring 的软件层面实现，可能使用方法还有可以优化的地方，造成 io\_uring 中一部分数据的锁争用。
+\end{enumerate}
+
 \subsection{AquaTurnner 智能调参模块测试}
 
 首先进行warm\_up得到一组参数和目标指标值的csv文件如图 \ref{test-turnner1} 所示，现在由于只调整AquaFS参数，参数空间较小，主要包括垃圾回收的gc相关参数，块大小以及zone的大小参数等，后续考虑在融合文件系统后加入inode相关参数。

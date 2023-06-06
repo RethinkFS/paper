@@ -4,32 +4,14 @@ AquaFS 是一个模块化的文件系统，以下是 AquaFS 的整体架构图�
 
 \subsection{AquaFS 整体架构}
 
-\begin{lstlisting}
-  +---------+ +-------+
-  | RocksDB | |  App  |
-  +--------++ ++------+
-    FS/POSIX|   |VFS/FUSE
-+-AquaFS----+---+----------+------+
-|           |   |          |Turner|
-|     +-----+---+--------+ +------+-----+
-|     |   Data Router    | |Configurator|
-|     +--+--------------++ +------+-----+
-|    SST |              | Data    |
-| +------+---+ inode +--+-------+ |
-| | AquaZFS  |<------+  ExtFS   | |
-| +--+-------+       +---+------+ |
-|    |RAID         Extent|        |
-|    |   +---------------+Data    |
-| +--+---+---------------+------+ |
-| |  |   |Zones Allocator|      | |
-| +--v---v---------------v------+ |
-| |       io_uring/xNVME        | |
-| +--------------+--------------+ |
-| | Seq Zones    | Conv Zones   | |
-+-+--------------+--------------+-+
-\end{lstlisting}
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{fig/aquafs-frame.png}
+    \caption{AquaFS 整体架构图}
+    \label{aquafs-frame}
+\end{figure}
 
-以上架构图中的模块简略说明如下：
+架构图 \ref{aquafs-frame} 中的模块简略说明如下：
 
 \begin{enumerate}
     \item App：文件系统请求负载
