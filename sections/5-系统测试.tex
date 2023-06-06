@@ -1,5 +1,152 @@
 \section{系统测试}
 
+\subsection{智能分区 RAID 模块和 IO 加速测试}
+
+由于 ZNS 当前仅有西数公司的设备支持，我们原本预计使用西数的 ZNS SSD 进行测试，即 SN530 512GB。但是由于西数的 SSD 申请过程非常复杂，国内外沟通流程也比较慢，现在仍在处理流程中，我们无法在短时间内获得设备，只能使用仿真环境进行测试。
+
+在几个月前，FAST23 上有一篇关于 ZNS 的论文，它类似 SPDK，在用户态实现了 NVME 的协议，也包括了 ZNS 的协议，可以在 Linux 上模拟 ZNS SSD。但是我们在测试过程中发现，它的 ZNS 模拟实现有问题，无法正常使用，我们在 Github 上提了 issue，但是现在项目还在持续更新中，我们测试中遇到的问题只解决了一些，但是又有更多新的问题出现。我们尝试去解决这些问题，但是由于时间有限，我们最终无法在初赛前解决这些问题，只能放弃在初赛中使用这个模拟器。
+
+以下 RAID IO 测试均使用了基于数据的延迟计算仿真，即计算 SSD 的访问延迟和数据传输延迟，其数据存储后端是内存。由于内存的访问延迟远小于 SSD，因此可以忽略内存的访问延迟，只计算 SSD 的访问延迟和数据传输延迟。
+
+测试环境为：Intel(R) Core(TM) i7-12700 CPU，内存 40GB 3200MHz；系统为 Archlinux，Linux 内核版本 6.3.5-arhc1-1。由于 libzbd、ZoneFS、nvmevirt 等都需要比较高的内核版本，于是这里直接一步到位地使用了最新的 Linux Kernel mainline。
+
+\subsubsection{数据完整性测试}
+
+由于 AquaZFS 是作为一个插件运行在 RocksDB 的文件系统层上的，所以可以使用 RocksDB 来验证其数据完整性。我们使用 RocksDB 的 db\_bench 工具进行测试，测试结果如表 \ref{test-data} 所示。
+
+\begin{table}[htbp]
+  \centering
+  \caption{数据完整性测试}
+  \label{test-data}
+  \begin{tabular}{cccc}
+    \hline
+    \textbf{测试项} & \textbf{设备数} & \textbf{测试参数} & \textbf{测试结果} \\
+    \hline
+    全盘 RAID C & 2 & \verb|--fs_uri=aquafs://raidc:dev:nullb0,dev:nullb1| & 通过 \\
+    全盘 RAID 0 & 2 & \verb|--fs_uri=aquafs://raid0:dev:nullb0,dev:nullb1| & 通过 \\
+    全盘 RAID 1 & 2 & \verb|--fs_uri=aquafs://raid1:dev:nullb0,dev:nullb1| & 通过 \\
+    分区 RAID A & 2 & \verb|--fs_uri=aquafs://raida:dev:nullb0,dev:nullb1| & 通过 \\
+    \multirow{2}{*}{分区 RAID A} & \multirow{2}{*}{4} & \verb|--fs_uri=aquafs://raida:dev:nullb0,dev:nullb1,| & \multirow{2}{*}{通过} \\
+    & & \verb|dev:nullb2,dev:nullb3| & \\
+    \hline
+  \end{tabular}
+\end{table}
+
+db\_bench 除了表 \ref{test-data} 中的，还需要添加如下参数：
+
+\begin{lstlisting}
+./plugin/aquafs/aquafs
+  mkfs # 创建文件系统
+  # --raids= 此选项用于指定数据后端，这里指定使用 AquaFS 的 RAID 功能
+  --aux_path=/tmp/aquafs # 指定 AquaFS 的辅助数据存储路径，如锁文件和日志缓存文件
+  --force # 清除原有的文件系统数据
+
+./db_bench 
+  # --fs_uri= 此选项用于指定数据后端，可以是文件系统路径，也可以是 AquaFS 的相关配置
+  --benchmarks=fillrandom # 指定测试项，使用随机写并校验
+  --use_direct_io_for_flush_and_compaction # 使用 Direct IO 加速
+  --use_stderr_info_logger # 在标准错误输出日志
+\end{lstlisting}
+
+由于输出较多，这里仅展示一部分输出，如图 \ref{check-data1}、\ref{check-data2}、\ref{check-data3} 所示。
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.85\textwidth]{fig/raid-data-check1.png}
+  \caption{ 数据完整性测试1 }
+  \label{check-data1}
+\end{figure}
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.85\textwidth]{fig/raid-data-check2.png}
+  \caption{ 数据完整性测试2 }
+  \label{check-data2}
+\end{figure}
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.85\textwidth]{fig/raid-data-check3.png}
+  \caption{ 数据完整性测试3 }
+  \label{check-data3}
+\end{figure}
+
+\subsubsection{使用 RAID 0 加速文件读写}
+
+由于 ZenFS 并不支持 POSIX 规范的文件系统访问接口，所以无法将其挂载到 Linux 的 VFS 上，因此无法使用 Linux 的文件系统测试工具来测试其性能。这里使用的测试逻辑，与 RocksDB 使用 AquaFS 文件系统插件类似，都是通过写程序调用 AquaFS 的 API 来测试性能。
+
+使用如下逻辑测试文件读写性能，并比较 RAID 0 的性能加速：
+
+\begin{enumerate}
+  \item 生成测试参数，包括文件大小、设备数量、RAID逻辑、随机种子等
+  \item 创建文件系统，设置RAID逻辑等
+  \item 在内存中生成一个指定大小的随机内容文件
+  \item 重复进行多次：
+  \begin{enumerate}
+    \item 通过 \verb|aquafs restore| 将这个文件写入 AquaFS 文件系统
+    \item 通过 \verb|aquafs dump| 将文件从 AquaFS 文件系统读出
+    \item 通过 \verb|std::hash| 和 \verb|md5sum| 比较读出的文件和原文件是否一致
+  \end{enumerate}
+  \item 计算平均耗时，得到读写平均时间
+\end{enumerate}
+
+对多组数据进行测试，结果输出如图 \ref{raid0-speedup} 所示：
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.85\textwidth]{fig/raid0-speedup.png}
+  \caption{ RAID 0 加速测试 }
+  \label{raid0-speedup}
+\end{figure}
+
+其得到的数据如表 \ref{raid0-speedup-table} 所示：
+
+\begin{table}[htbp]
+  \centering
+  \caption{RAID 0 加速测试}
+  \label{raid0-speedup-table}
+  \begin{tabular}{cccccc}
+    \hline
+    \textbf{设备数量} & \textbf{文件大小(MiB)} & \textbf{平均读时间(ms)} & \textbf{平均写时间(ms)} & \textbf{次数} & \textbf{说明} \\
+    \hline
+    1 & 128 & 209 & 114 & 5 & 单盘分区 RAID \\
+    4 & 128 & 51 & 31 & 5 &  多盘全盘 RAID 0 \\
+    4 & 128 & 198 & 106 & 5 &  多盘分区 RAID \\
+    1 & 128 & 1467 & 1431 & 5 &  ZenFS 默认 \\
+    \hline
+  \end{tabular}
+\end{table}
+
+可以看到，在单盘分区 RAID 的情况下，读写性能都有至少 N 倍的性能提升，而在多盘全盘 RAID 0 的情况下，读写性能有更大提升。
+
+相比与 ZenFS 的默认读写，单盘分区读写由于使用 io\_uring、协程、重新构造读写请求等方式，性能有成倍的提升。具体提升幅度被能同时读写的 Zone 数量限制；而原版 ZenFS 只能单线程进行数据请求，因此性能较低。
+
+相比与单设备的分区 RAID，多盘分区 RAID 有更大的性能提升。多盘意味着系统并行度更大，因此获得了更高的瞬时吞吐量。
+
+而多盘全盘 RAID 0，由于采用的读写加速方式与分区 RAID 一致，其逻辑更加精简，因此性能更高。
+
+\subsubsection{文件系统数据恢复测试}
+
+测试逻辑：
+
+\begin{enumerate}
+  \item 生成随机大文件
+  \item 使用 \verb|aquafs restore| 将文件写入 AquaFS 文件系统
+  \item 在软件层面触发模拟硬件故障，使得一个 Dev Zone 下线
+  \item 使用 \verb|aquafs dump| 将文件从 AquaFS 文件系统读出，观察是否能够正常读出
+  \item 校验读出的文件和原文件是否一致
+\end{enumerate}
+
+使用 128 MiB 文件大小进行测试，测试过程如图 \ref{test-recovery} 所示。
+在测试中，AquaFS 成功地检测到了 Zone 的故障，并且成功地从其他 Zone 中恢复了数据，维护了文件系统的数据完整性。
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.85\textwidth]{fig/test-recovery.png}
+  \caption{ 数据恢复测试 }
+  \label{test-recovery}
+\end{figure}
+
 \subsection{AquaTurnner 智能调参模块测试}
 
 首先进行warm\_up得到一组参数和目标指标值的csv文件如图 \ref{test-turnner1} 所示，现在由于只调整AquaFS参数，参数空间较小，主要包括垃圾回收的gc相关参数，块大小以及zone的大小参数等，后续考虑在融合文件系统后加入inode相关参数。
