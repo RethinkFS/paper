@@ -119,7 +119,7 @@ int Raid0ZonedBlockDevice::Read(char *buf, int size, uint64_t pos,
 
 在上述代码中，我们将读请求分割为不同的 Block Size 的读请求，然后调用底层的读写接口。这样做的好处是，可以将读请求分散到多个设备中，从而提高读性能。不过，上述代码中其实并没有体现 RAID 0 的多设备读优化，还是单线程读取。我们在后文中实现了基于 uring 的多设备并行读优化。
 
-\subsubsection{分区 RAID 的实现}
+\subsubsection{智能分区 RAID 的实现}
 
 分区 RAID 的实现与全盘 RAID 的实现类似，但是我们在逻辑 Raid Zone 和实际设备 Zone 之间加上了一层基于 Zones 的映射。这些映射是通过 ZenFS 的 Record 写入 MetaZones 内的，将在每次文件系统加载的时候逐步读取加载映射逻辑。
 
@@ -137,7 +137,73 @@ Zone Raid $n$ 为向上层暴露出的可读写数据 Zone 区域，而其中可
 在示例图 \ref{raid-a} 中，Dev Zone $x$ 表示来自不同或相同设备的设备上物理存在的 Zone。
 如果这个 Raid Zone 被配置为 RAID 1，则 Dev Zone $a$ 和 Dev Zone $e$ 将同时以 RAID 1 数据冗余方式为 Raid Zone $n$ 的前四分之一数据提供服务，其他 Dev Zones 由于没有映射，将回退到 RAID C 逻辑提供数据存储服务。若这个 Raid Zone 被配置为 RAID 0，则 Dev Zone $a$ 和 Dev Zone $e$ 将同时以 RAID 0 数据分散方式为 Raid Zone $n$ 的前四分之一数据提供服务，其他 Dev Zones 由于没有映射，将回退到 RAID C 逻辑提供数据存储服务。
 
+实际代码实现上，除了上述映射逻辑处理，还有许多细节需要考虑。
 
+首先是跨 Zones 读写问题。由于我们添加的映射逻辑，使得我们的数据排布不再是连续的，而是以 Zones 为单位分散的。这就导致了我们的读写请求可能会跨越多个 Zone。这就需要我们在读写时，需要将读写请求分割为不同的 Block Size 的读写请求，然后可能对这些请求重新合并排序，再调用底层的读写接口。
+
+在读或写代码中，通过数据段分割并递归调用自身的方式实现跨 Zones 读写的请求分割：
+
+\begin{lstlisting}
+  if (static_cast<decltype(zone_sz_)>(size) > zone_sz_) {
+    // may cross raid zone, split read range as zones
+    int sz_read = 0;
+    int r;
+    while (size > 0) {
+      auto req_size =
+          std::min(size, static_cast<int>(zone_sz_ - pos % zone_sz_));
+      r = Read(buf, req_size, pos, direct);
+      if (r > 0) {
+        buf += r;
+        pos += r;
+        sz_read += r;
+        size -= r;
+      } else {
+        return r;
+      }
+    }
+    // flush_zone_info();
+    return sz_read;
+  } else {
+    // ...
+\end{lstlisting}
+
+其次是数据后端问题。由于我们是基于 ZonedBlockDeviceBackend 来实现的，而 ZonedBlockDeviceBackend 有多种子类，可以是 libzbd、ZoneFS 甚至是原来实现的全盘 RAID。
+为了进一步简化 IO 调用栈，我们在实现分区 RAID 时，假定数据后端都是 libzbd 提供的数据读写。这在之后可以进一步优化，以支持更多的数据后端，提升 RAID 逻辑的灵活性，如添加 ZoneFS 支持、添加 SPDK 等 Kernel bypass 方案支持等。
+
+除此以外，还需要考虑对 ZenFS 的兼容性问题。ZenFS 在加载的过程中，会对固定的 MetaZones 进行扫描，通过 Magic Number 查找到 Meta Zones 中的可用的超级块，并选择最新的超级块进行文件系统初始化。为了兼容 ZenFS 的 Meta Data 管理逻辑，我们不能改变 MetaZones 的排布，也不能改变超级块的存储逻辑。因此，我们在实现分区 RAID 时，需要保证 MetaZones 的排布不变，超级块的存储逻辑不变，以及超级块的存储位置不变。所以，我们在实现分区 RAID 时，将 MetaZones 的排布和超级块的存储位置都固定在了第一个设备上，进行映射的连续逻辑预分配，这样就可以保证 ZenFS 的兼容性，使得 ZenFS 在加载分区 RAID 时，可以正常加载。
+
+在创建或读取文件系统时的预分配映射：
+
+\begin{lstlisting}
+  // create temporal device map: AQUAFS_META_ZONES in the first device is used
+  // as meta zones, and marked as RAID_NONE; others are marked as RAID_C
+  for (idx_t idx = 0; idx < AQUAFS_META_ZONES; idx++) {
+    for (size_t i = 0; i < nr_dev(); i++)
+      allocator.addMapping(idx * nr_dev() + i, 0, idx * nr_dev() + i);
+    allocator.setMappingMode(idx, RaidMode::RAID_NONE);
+  }
+\end{lstlisting}
+
+为了管理分区之间的映射关系，我们通过组合的方式实现了一个分区分配器 ZoneRaidAllocator。其可以管理分区的映射关系，以及分区的 RAID 逻辑。其主要接口如下：
+
+\begin{lstlisting}
+  Status addMapping(idx_t logical_raid_zone_sub_idx, idx_t physical_device_idx,
+                    idx_t physical_zone_idx);
+  void setMappingMode(idx_t logical_raid_zone_idx, RaidModeItem mode);
+  void setMappingMode(idx_t logical_raid_zone_idx, RaidMode mode);
+
+  int getFreeDeviceZone(idx_t device);
+  int getFreeZoneDevice(idx_t device_zone);
+  Status createMapping(idx_t logical_raid_zone_idx);
+  Status createMappingTwice(idx_t logical_raid_zone_idx);
+  Status createOneMappingAt(idx_t logical_raid_zone_sub_idx, idx_t device,
+                            idx_t &zone);
+  void setOffline(idx_t device, idx_t zone);
+\end{lstlisting}
+
+其可以提供映射关系的查询、增加、删除、修改等功能，以及提供 Raid Zone 所分配的 RAID 逻辑的查询、增加、删除、修改等功能。
+
+同时，它还提供了 setOffline 功能，可以在发现设备故障时，将故障设备的所有分区设置为 Offline 状态，以便后续的故障处理。
 
 \subsection{AquaFS 的 IO 加速实现}
 
