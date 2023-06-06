@@ -16,6 +16,127 @@ AquaFS 文件系统的实现基于 ZenFS，我们在 ZenFS 的基础上进行了
 
 \subsection{AquaFS 文件系统的 RAID 实现}
 
+当前 AquaFS 的 RAID 实现主要分为两种：全盘 RAID 和分区 RAID。这两种 RAID 实现的区别在于，全盘 RAID 的 RAID 单位是磁盘，而分区 RAID 的 RAID 单位是 Zone。
+
+\subsubsection{全盘 RAID 的实现}
+
+在传统的 RAID 实现中，基本都是以磁盘为单位进行数据 RAID 逻辑。以磁盘为单位的 RAID 能够充分运用各个磁盘的数据吞吐，并基于 Linux 的块设备等抽象层提供软件上的 RAID 功能。我们也首先实现了全盘 RAID 的功能，能够将多个 ZNS 配置为 RAID 0、RAID 1 模式。
+
+由于 ZenFS 是一个没有一般 POSIX 接口的文件系统，其仅向上服务于 RocksDB，所以我们并不能简单地使用 Linux 上常用的磁盘软件 RAID 来实现 ZNS 的 RAID 功能。更何况，ZNS 并不是 Linux 兼容的块设备，内核中并没有对 ZNS 的 RAID 支持。经过调研和评估，我们认为在 Linux Kernel 内实现对 ZNS 的 RAID 支持并不现实。于是，我们需要在 ZenFS 的基础上实现 RAID 功能。
+
+ZenFS 的数据读写将会经过以下几个层次：
+
+\begin{enumerate}
+  \item RocksDB 的 SSTable
+  \item RocksDB 的 MemTable
+  \item RocksDB 的 WAL
+  \item RocksDB 的 FileSystem
+  \item ZenFS 的 ZoneFile
+  \item ZenFS 的 ZoneExtent
+  \item ZenFS 的 Record
+  \item ZenFS 的 ZonedBlockDeviceBackend
+  \item libzbd 的 ZbdlibBackend
+  \item Linux Kernel 相关系统调用
+\end{enumerate}
+
+其中，RocksDB 的 SSTable、MemTable、WAL、FileSystem 都是 RocksDB 的内部实现，ZenFS 的 ZoneFile、ZoneExtent、Record、ZonedBlockDeviceBackend 都是 ZenFS 的内部实现，libzbd 的 ZbdlibBackend 是 ZenFS 内对 libzbd 的接口适配，Linux Kernel 相关系统调用是 libzbd 作为用户态程序调用 Linux Kernel 内的设备驱动程序的接口，最终还是会通过 Linux 的系统调用来实现数据的传输。
+
+ZenFS 和 RocksDB 还支持了另一种数据读写方式，通过 ZoneFS 将 ZNS 中的 Zones 以文件映射到文件系统中，然后通过文件系统的接口来读写数据。这种方式的数据读写流程如下：
+
+\begin{enumerate}
+  \item RocksDB 的 SSTable
+  \item RocksDB 的 MemTable
+  \item RocksDB 的 WAL
+  \item RocksDB 的 FileSystem
+  \item ZenFS 的 ZoneFile
+  \item ZenFS 的 ZoneExtent
+  \item ZenFS 的 Record
+  \item ZenFS 的 ZonedBlockDeviceBackend
+  \item ZoneFS 的 ZoneFSBackend
+  \item Linux Kernel VFS 接口
+\end{enumerate}
+
+虽然这种方式通过 ZoneFS 将 ZNS 中的 Zones 以文件映射到文件系统中，但是 ZoneFS 并不是一个通用的文件系统，它仅仅是一个将 ZNS 中的 Zones 以文件的形式映射到文件系统中的文件系统。ZoneFS 并不支持文件的创建、删除、重命名等操作，文件的读写操作也支持不完全，而且还会引入更多的存储 IO 栈，所以我们并没有选择通过 ZoneFS 来实现 ZNS 的 RAID 功能。
+
+我们选择在 ZenFS 的 ZonedBlockDeviceBackend 层实现 ZNS 的 RAID 功能。ZonedBlockDeviceBackend 层是 ZenFS 中管理数据后端的层，它是 ZenFS 与 libzbd 或 ZoneFS 之间的接口层，负责将 ZenFS 的数据读写请求转换为 libzbd 或 ZoneFS 的数据读写请求。
+
+我们通过继承 ZonedBlockDeviceBackend 来实现 ZenFS 内的数据 RAID 功能。ZonedBlockDeviceBackend 的继承类图如图 \ref{raid-layers} 所示。
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.85\textwidth]{fig/raid-layers.png}
+  \caption{ ZonedBlockDeviceBackend 继承类图 }
+  \label{raid-layers}
+\end{figure}
+
+AbstractRaidZonedBlockDevice 下的 Raid0ZonedBlockDevice、Raid1ZonedBlockDevice 和 RaidCZonedBlockDevice 即为全盘 RAID 的实现。其中，Raid0ZonedBlockDevice 实现了 RAID 0 的功能，Raid1ZonedBlockDevice 实现了 RAID 1 的功能，RaidCZonedBlockDevice 实现了 RAID C 的功能。
+
+RAID C 是我们自定义的一种简单 RAID 格式，它通过 Zones 的合并来实现简单的数据拼合逻辑，即将多个 Zone 合并为一个 Zone，然后将数据写入到合并后的 Zone 中。RAID C 的实现如图 \ref{raid-c} 所示。
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.85\textwidth]{fig/raid-c.png}
+  \caption{ 全盘 RAID 的数据排布 }
+  \label{raid-c}
+\end{figure}
+
+此时多个（$m$个）设备上实际存在的 Zones 合并为一个大的逻辑 Raid Zone，数据将会按顺序依次写入 Dev Zone $n_{i}$（$0 \le i < m$）。此 RAID C 模式存在的意义是，形成一个简单的 Zone 合并逻辑，便于后续开发应用。其中，Dev Zone $n_i$ 分别为来自第 $i$ 个设备的第 $n$ 个 Zone。
+
+RAID 0 和 RAID 1 的实现与传统的 RAID 0 和 RAID 1 的实现类似，RAID 0 将数据分散写入多个设备中，RAID 1 将数据写入多个设备中的一个。RAID 0 和 RAID 1 的实现中的数据排布与 RAID C （图 \ref{raid-c}）基本一致。
+
+RAID 0 在写入时，将会将数据分散写入多个设备中。类似于传统块设备的 Block Size，ZNS 也是有最小写入单位的，也是 Block Size。RAID 0 在读写时，可以将读写请求分割为不同的 Block Size 的读写请求，然后对这些请求重新合并排序，再调用底层的读写接口。
+
+以 RAID 0 读为例，其未经 IO 优化的读流程如下所示：
+
+\begin{lstlisting}
+int Raid0ZonedBlockDevice::Read(char *buf, int size, uint64_t pos,
+                                bool direct) {
+#ifndef AQUAFS_RAID_URING
+  // split read range as blocks
+  int sz_read = 0;
+  int r;
+  while (size > 0) {
+    auto req_size =
+        std::min(size, static_cast<int>(GetBlockSize() - pos % GetBlockSize()));
+    r = devices_[get_idx_dev(pos)]->Read(buf, req_size, req_pos(pos), direct);
+    if (r > 0) {
+      size -= r;
+      sz_read += r;
+      buf += r;
+      pos += r;
+    } else {
+      return r;
+    }
+  }
+  return sz_read;
+#else
+  // ...
+#endif
+}
+\end{lstlisting}
+
+代码逻辑主要为，每次请求最多读取一个 Block Size 的数据，然后将读取的数据拼接到 buf 中，直到读取完毕。其中需要多次重复计算数据分块的设备位置和块位置，于是这里使用了 get\_idx\_dev 和 req\_pos 函数来快速计算设备位置和块位置。这些函数被实现在 AbstractRaidZonedBlockDevice 层，以便其子类可以快速调用其逻辑。
+
+在上述代码中，我们将读请求分割为不同的 Block Size 的读请求，然后调用底层的读写接口。这样做的好处是，可以将读请求分散到多个设备中，从而提高读性能。不过，上述代码中其实并没有体现 RAID 0 的多设备读优化，还是单线程读取。我们在后文中实现了基于 uring 的多设备并行读优化。
+
+\subsubsection{分区 RAID 的实现}
+
+分区 RAID 的实现与全盘 RAID 的实现类似，但是我们在逻辑 Raid Zone 和实际设备 Zone 之间加上了一层基于 Zones 的映射。这些映射是通过 ZenFS 的 Record 写入 MetaZones 内的，将在每次文件系统加载的时候逐步读取加载映射逻辑。
+
+加上这一层映射之后，分区 RAID 的数据排布逻辑可能如图 \ref{raid-a} 所示。
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.85\textwidth]{fig/raid-a.png}
+  \caption{ 分区 RAID 的数据排布 }
+  \label{raid-a}
+\end{figure}
+
+Zone Raid $n$ 为向上层暴露出的可读写数据 Zone 区域，而其中可以存在多种不同的 RAID 逻辑或映射类型。
+
+在示例图 \ref{raid-a} 中，Dev Zone $x$ 表示来自不同或相同设备的设备上物理存在的 Zone。
+如果这个 Raid Zone 被配置为 RAID 1，则 Dev Zone $a$ 和 Dev Zone $e$ 将同时以 RAID 1 数据冗余方式为 Raid Zone $n$ 的前四分之一数据提供服务，其他 Dev Zones 由于没有映射，将回退到 RAID C 逻辑提供数据存储服务。若这个 Raid Zone 被配置为 RAID 0，则 Dev Zone $a$ 和 Dev Zone $e$ 将同时以 RAID 0 数据分散方式为 Raid Zone $n$ 的前四分之一数据提供服务，其他 Dev Zones 由于没有映射，将回退到 RAID C 逻辑提供数据存储服务。
+
 
 
 \subsection{AquaFS 的 IO 加速实现}
