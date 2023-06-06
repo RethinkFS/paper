@@ -40,3 +40,48 @@
   year = {2018},
   location = {哈尔滨}
 }
+
+@misc{ext4doc,
+  title = {Ext4 documentation},
+  howpublished={\url{https://www.kernel.org/doc/Documentation/filesystems/ext4.txt}},
+}
+
+@inproceedings{Sehgal2010EvaluatingPA,
+  title={Evaluating Performance and Energy in File System Server Workloads},
+  author={Priya Sehgal and Vasily Tarasov and Erez Zadok},
+  booktitle={USENIX Conference on File and Storage Technologies},
+  year={2010}
+}
+
+@inproceedings{10.5555/3277355.3277441,
+author = {Cao, Zhen and Tarasov, Vasily and Tiwari, Sachin and Zadok, Erez},
+title = {Towards Better Understanding of Black-Box Auto-Tuning: A Comparative Analysis for Storage Systems},
+year = {2018},
+isbn = {9781931971447},
+publisher = {USENIX Association},
+address = {USA},
+abstract = {Modern computer systems come with a large number of configurable parameters that control their behavior. Tuning system parameters can provide significant gains in performance but is challenging because of the immense number of configurations and complex, nonlinear system behavior. In recent years, several studies attempted to automate the tuning of system configurations; but they all applied only one or few optimization methods. In this paper, for the first time, we apply and then perform comparative analysis of multiple black-box optimization techniques on storage systems, which are often the slowest components of computing systems. Our experiments were conducted on a parameter space consisting of nearly 25,000 unique configurations and over 450,000 data points. We compared these methods for their ability to find near-optimal configurations, convergence time, and instantaneous system throughput during auto-tuning. We found that optimal configurations differed by hardware, software, and workloads-- and that no one technique was superior to all others. Based on the results and domain expertise, we begin to explain the efficacy of these important automated black-box optimization methods from a systems perspective.},
+booktitle = {Proceedings of the 2018 USENIX Conference on Usenix Annual Technical Conference},
+pages = {893–907},
+numpages = {15},
+location = {Boston, MA, USA},
+series = {USENIX ATC '18}
+}
+
+@inproceedings{10.1145/3545008.3545012,
+author = {Lu, Kai and Li, Guokuan and Wan, Jiguang and Ma, Ruixiang and Zhao, Wei},
+title = {ADSTS: Automatic Distributed Storage Tuning System Using Deep Reinforcement Learning},
+year = {2023},
+isbn = {9781450397339},
+publisher = {Association for Computing Machinery},
+address = {New York, NY, USA},
+url = {https://doi.org/10.1145/3545008.3545012},
+doi = {10.1145/3545008.3545012},
+abstract = {Modern distributed storage systems with the immense number of configurations, unpredictable workloads and difficult performance evaluation pose higher requirements to parameter tuning. Providing an automatic parameter tuning solution for distributed storage systems is in demand. Lots of researches have attempted to build automatic tuning systems based on deep reinforcement learning (RL). However, they have several limitations in the face of these requirements, including lack of parameter spaces processing, less advanced RL models and time-consuming and unstable training process. In this paper, we present and evaluate the ADSTS, which is an automatic distributed storage tuning system based on deep reinforcement learning. A general preprocessing guideline is first proposed to generate standardized tunable parameter domain. Thereinto, Recursive Stratified Sampling without the nonincremental nature is designed to sample huge parameter spaces and Lasso regression is adopted to identify important parameters. Besides, the twin-delayed deep deterministic policy gradient method is utilized to find the optimal values of tunable parameters. Finally, Multi-processing Training and Workload-directed Model Fine-tuning are adopted to accelerate the model convergence. ADSTS is implemented on Park and is used in the real-world system Ceph. The evaluation results show that ADSTS can recommend near-optimal configurations and improve system performance by 1.5 \texttimes{} ∼2.5 \texttimes{} with acceptable overheads.},
+booktitle = {Proceedings of the 51st International Conference on Parallel Processing},
+articleno = {25},
+numpages = {13},
+keywords = {Reinforcement Learning, Distributed Storage System, Parameter Identification, Auto-tuning},
+location = {Bordeaux, France},
+series = {ICPP '22}
+}
