@@ -64,7 +64,7 @@ ZenFS 和 RocksDB 还支持了另一种数据读写方式，通过 ZoneFS 将 ZN
 
 \begin{figure}[htbp]
   \centering
-  \includegraphics[width=0.85\textwidth]{fig/raid-layers.png}
+  \includegraphics[width=0.85\textwidth]{fig/raid-layers}
   \caption{ ZonedBlockDeviceBackend 继承类图 }
   \label{raid-layers}
 \end{figure}
@@ -75,7 +75,7 @@ RAID C 是我们自定义的一种简单 RAID 格式，它通过 Zones 的合并
 
 \begin{figure}[htbp]
   \centering
-  \includegraphics[width=0.85\textwidth]{fig/raid-c.png}
+  \includegraphics[width=0.85\textwidth]{fig/raid-c}
   \caption{ 全盘 RAID 的数据排布 }
   \label{raid-c}
 \end{figure}
@@ -127,7 +127,7 @@ int Raid0ZonedBlockDevice::Read(char *buf, int size, uint64_t pos,
 
 \begin{figure}[htbp]
   \centering
-  \includegraphics[width=0.85\textwidth]{fig/raid-a.png}
+  \includegraphics[width=0.85\textwidth]{fig/raid-a}
   \caption{ 分区 RAID 的数据排布 }
   \label{raid-a}
 \end{figure}
@@ -247,7 +247,7 @@ Direct IO 的使用也非常简单，只需要在打开文件时，将 O\_DIRECT
 
 \begin{figure}[htbp]
   \centering
-  \includegraphics[width=0.7\textwidth]{fig/io-speedup.png}
+  \includegraphics[width=0.7\textwidth]{fig/io-speedup}
   \caption{IO 加速方案}
   \label{io-speedup}
 \end{figure}
@@ -336,7 +336,7 @@ io\_uring 的使用也非常简单，只需要提交 SQE 到 ring buffer 中，�
 
 \begin{figure}[htbp]
   \centering
-  \includegraphics[width=0.7\textwidth]{fig/aquaturnner.png}
+  \includegraphics[width=0.7\textwidth]{fig/aquaturnner}
   \caption{AquaTurnner 智能调参模块}
   \label{aquaturnner}
 \end{figure}

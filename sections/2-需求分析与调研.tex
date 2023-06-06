@@ -33,7 +33,7 @@ Flash介质因本身的擦除特性，给上层文件系统带来与普通磁盘
 
 \begin{figure}[htbp]
   \centering
-  \includegraphics[width=0.7\textwidth]{fig/YOUBIFS项目框图.png}
+  \includegraphics[width=0.7\textwidth]{fig/YOUBIFS项目框图}
   \caption{YOUBIFS 系统架构}
   \label{youbifs}
 \end{figure}
@@ -130,7 +130,7 @@ YOUBIFS 的系统架构如图 \ref{youbifs} 所示。
 
 \begin{figure}[htbp]
   \centering
-  \includegraphics[width=0.7\textwidth]{fig/flash-mtd-ftl.png}
+  \includegraphics[width=0.7\textwidth]{fig/flash-mtd-ftl}
   \caption{MTD 设备和有 FTL 的设备的对比}
   \label{flash-mtd-ftl}
 \end{figure}
@@ -156,7 +156,7 @@ MTD 设备和有 FTL 的设备的对比如图 \ref{flash-mtd-ftl} 所示。在�
 
 \begin{figure}[htbp]
   \centering
-  \includegraphics[width=0.85\textwidth]{fig/flash-nand-nor.jpg}
+  \includegraphics[width=0.85\textwidth]{fig/flash-nand-nor}
   \caption{Flash 原理与分类}
   \label{flash-nand-nor}
 \end{figure}
@@ -167,7 +167,7 @@ Nand Flash 是一种非易失性存储器，具有访问速度快、存储密度
 
 \begin{figure}[htbp]
   \centering
-  \includegraphics[width=0.85\textwidth]{fig/flash-nand-feature.png}
+  \includegraphics[width=0.85\textwidth]{fig/flash-nand-feature}
   \caption{K9F1G08U0F-5IB0 特性}
   \label{flash-nand-feature}
 \end{figure}
@@ -178,7 +178,7 @@ Nand Flash 是一种非易失性存储器，具有访问速度快、存储密度
 
 \begin{figure}[htbp]
   \centering
-  \includegraphics[width=0.85\textwidth]{fig/nand-rw-err.png}
+  \includegraphics[width=0.85\textwidth]{fig/nand-rw-err}
   \caption{写入时错误处理流程}
   \label{nand-rw-err}
 \end{figure}
@@ -187,7 +187,7 @@ Nand 由于其以页面为写入单位的特性，使得其在写入时的错误
 
 \begin{figure}[htbp]
   \centering
-  \includegraphics[width=0.85\textwidth]{fig/nand-replace.png}
+  \includegraphics[width=0.85\textwidth]{fig/nand-replace}
   \caption{Nand 块替换流程}
   \label{nand-replace}
 \end{figure}
@@ -196,7 +196,7 @@ Nand 由于其以页面为写入单位的特性，使得其在写入时的错误
 
 \begin{figure}[htbp]
   \centering
-  \includegraphics[width=0.85\textwidth]{fig/nand-write-addr.png}
+  \includegraphics[width=0.85\textwidth]{fig/nand-write-addr}
   \caption{Nand 写入寻址举例}
   \label{nand-write-addr}
 \end{figure}
@@ -282,7 +282,9 @@ SSD 的性能瓶颈涉及多个方面：
 
 经过调研，我们发现了许多现有的基于 Nand Flash 的文件系统，如 Btrfs、LogFS、F2FS 等。这些文件系统都是为了解决 Nand Flash 的特性而设计的，它们都有各自的优缺点，但是都是在当下已经有完善的 FTL 映射的情况下去解决这个问题。
 
-如果有一种“文件系统”，能够
+如果有一种“文件系统”，能够在上层软件和下层硬件之间沟通协调，让软硬件各自更加各司其职，做更适合做的事情，那么能不能解决上面提到的诸多困难呢？
+
+于是乎，我们找到了 ZenFS。这是一个简单的“文件系统”，但是它却能够做到保持最高性能写入不掉速，能做到 100\% 的空间利用率，能做到最高的数据库随机读写速度和最低的读写延迟。对这样一种“文件系统”，我们立刻产生了极大的兴趣。对 ZenFS 的调研，详见第 \ref{chap:zenfs} 章的介绍。
 
 \subsubsection{文件系统调参}
 
@@ -315,4 +317,54 @@ SSD 的性能瓶颈涉及多个方面：
 在参数调整方面，是对于参数选择中的重要参数进行参数的调整。
 
 在之前的对数据库进行自动调参的研究中[6]，对数据库的表征负载进行提取，在匹配了相似负载，并用lasso回归对参数进行去冗余降维之后，采用了高斯过程回归的方案进行参数的调整。高斯过程回归是一种先进的技术，其功能与深度网络的功能大致相当。高斯过程回归有许多吸引人的特性，使其成为配置空间建模和提出建议的合适选择。最重要的是，一个是高斯过程回归默认提供置信区间。在该研究中采用了两种方案提供推荐的参数，其中一种是直接匹配相似负载中的最好配置，另外一种是尝试回归的配置。本文中尝试使用两种方案。
+
+\subsection{ZenFS}
+\label{chap:zenfs}
+
+\subsubsection{ZenFS 的特点}
+
+ZenFS 是一个 RocksDB 的文件系统插件，它利用 RocksDB 的文件系统接口将文件放置到原始分区块设备上的区域中。通过将文件分成多个区域并利用写入生命周期提示来共同定位具有相似生命周期的数据，与传统的块设备相比，系统写入放大大大降低了。 ZenFS 确保文件系统或磁盘上没有后台垃圾收集，从而提高吞吐量、尾部延迟和磁盘耐久性方面的性能。ZenFS 的整体架构如图 \ref{zenfs-overview} 所示。
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.8\textwidth]{fig/zenfs-overview}
+    \caption{ZenFS 架构}
+    \label{zenfs-overview}
+\end{figure}
+
+ZenFS 是一种特殊的“文件系统”。与其说是一种文件系统，不如说是一种全新的软硬件协同的系统中的一部分。它通过尽量将原本不可知的 FTL 映射和垃圾回收的过程暴露给上层，使得上层可以更好地利用 SSD 的特性。ZenFS 通过将文件分成多个区域并利用写入生命周期提示来共同定位具有相似生命周期的数据，与传统的块设备相比，系统写入放大大大降低了。ZenFS 确保文件系统或磁盘上没有后台垃圾收集，从而提高吞吐量、尾部延迟和磁盘耐久性方面的性能。
+
+硬件方面，ZenFS 基于 Zoned Storage SSD 和 ZNS（Zoned Namespaces）。
+
+ZNS 是 NVMe 最新标准的一部分，它是专用于特殊 SSD 的通用接口，能够将更多的信息暴露到主机上，利用主机的应用场景信息来优化 SSD 的性能。而 Zoned Storage SSD 就是专门为 ZNS 而设计的 SSD，它将 SSD 的内部划分为多个区域，每个区域都有自己的写入指针，不支持随机写入而是只支持从当前写指针写入，从而尽可能地避免了底层主控上的逻辑映射和垃圾回收。普通 SSD 的主控掌握了逻辑地址到物理地址的映射，并且在主机不可控的情况下执行垃圾回收（尽管有 Trim 命令的支持），而 Zoned Storage SSD 的垃圾回收机制是由主机来控制的，这样就可以最大程度上地减小写入放大和读写波动，并且能够完全消除硬件预留的空间，从而提高了 SSD 的性能利用率。
+
+硬件方面的尝试其实不止 ZNS 一种。在利用硬件进行 SSD 存储优化的赛道上，有过许多新奇的软硬件技术。Intel 的傲腾就是其中之一，它利用全新的 3D XPoint 相变存储介质，将 SSD 的读写性能提升到了一个新的高度。但是傲腾的缺点也很明显，那就是成本高昂，而且只有 Intel 自家的 CPU 才能够完全发挥傲腾的性能。而 ZNS 和 Zoned Storage SSD 的优势在于，它们是 NVMe 的标准，任何厂商都可以按照标准来生产。而且 ZNS 和 Zoned Storage SSD 的实际生产成本并不高，硬件上主控的计算压力减少了，也释放了更多原来的预留空间，所以大量生产后成本会比现在的 SSD 还要低，因此在可以遇见的未来，ZNS SSD 还会更加普及。
+
+除了傲腾，还有 Open-Channel SSD（OCSSD）。它的主要优化点在于，它将 SSD 的主控和垃圾回收的功能都放到了主机上，而 SSD 只负责读写数据。这样做的好处是，主机可以根据自己的应用场景来优化 SSD 的性能，而且 SSD 的成本也会降低。但是这样做的缺点也很明显，那就是主机的计算压力会变大，而且主机的应用场景也会受到限制。它与 Zoned Storage SSD 的区别主要在于，OCSSD 是将 FTL 放置在主机端，从而减小 SSD 上主控的 DRAM 成本等，而 Zoned Storage SSD 则干脆基本放弃了细粒度的 FTL，只在非常大的 Zone 粒度上做了大块逻辑映射和磨损均衡，从而进一步地让 SSD 服务于计算和存储本身。
+
+软件方面，ZenFS 则是利用 RocksDB 的文件系统接口将文件放置到原始分区块设备上的区域中。
+
+RocksDB 是 Facebook 开源的一个 KV 存储引擎，它是 LevelDB 的一个分支，主要用于存储 Facebook 的消息系统的元数据。RocksDB 的特点是，它是一个基于 LSM-Tree 的存储引擎，它的读写性能都非常高，而且它的写入放大也非常低。RocksDB 的写入放大主要是通过将写入的数据放到内存中的 MemTable 中，然后再将 MemTable 中的数据写入到磁盘中的 SSTable 中来实现的。RocksDB 的读写性能和写入放大都非常优秀，所以它在 Facebook 的消息系统中得到了广泛的应用。
+
+RocksDB 的 LST-Tree 有多个层次，每个层次都有自己的 SSTable。在 RocksDB 中，每个 SSTable 都是一个文件，而每个 SSTable 中的数据都是有序的。在 RocksDB 中，每个 SSTable 都有一个大小的限制，当 SSTable 的大小达到限制时，就会将达到大小的 SSTable 进行 Compact 操作。LSM-Tree 的操作逻辑（图 \ref{lsm-tree} ），让这种数据结构在磁盘上的表现为一种类似于日志的结构，这样结构的数据库在磁盘上的随机写性能非常高，而且写入放大也非常低。
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.8\textwidth]{fig/lsm-tree}
+    \caption{LSM-Tree 的操作逻辑}
+    \label{lsm-tree}
+\end{figure}
+
+在 ZenFS 中，每个上述提到的 SSTable 就是一个 \verb|.sst| 文件。ZenFS 对 SST 文件的管理，也如 SSTable 的完全追加写入如出一辙，即使用 WAL（Write Ahead Log）管理文件的 MetaData 和文件数据，甚至文件的重命名、修改、新增和删除，都是只追加写入的。
+
+\subsubsection{ZenFS 源码分析}
+
+在调研过程中，我们对 ZenFS 的源代码进行了一次完整的分析，总结出我们理解中的 ZenFS 的系统框图（图 \ref{zenfs} ）。
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.8\textwidth]{fig/zenfs}
+    \caption{ZenFS 系统框图}
+    \label{zenfs}
+\end{figure}
 
