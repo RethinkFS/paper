@@ -323,7 +323,7 @@ SSD 的性能瓶颈涉及多个方面：
 
 \subsubsection{ZenFS 的特点}
 
-ZenFS 是一个 RocksDB 的文件系统插件，它利用 RocksDB 的文件系统接口将文件放置到原始分区块设备上的区域中。通过将文件分成多个区域并利用写入生命周期提示来共同定位具有相似生命周期的数据，与传统的块设备相比，系统写入放大大大降低了。 ZenFS 确保文件系统或磁盘上没有后台垃圾收集，从而提高吞吐量、尾部延迟和磁盘耐久性方面的性能。ZenFS 的整体架构如图 \ref{zenfs-overview} 所示。
+ZenFS 是一个 RocksDB 的文件系统插件，它利用 RocksDB 的文件系统接口将文件放置到原始分区块设备上的区域中。通过将文件分成多个区域并利用写入生命周期提示来共同定位具有相似生命周期的数据，与传统的块设备相比，系统写入放大大大降低了。 ZenFS 确保文件系统或磁盘上没有后台垃圾收集，从而提高吞吐量、尾部延迟和磁盘耐久性方面的性能（图 \ref{zns-write}）。ZenFS 的整体架构如图 \ref{zenfs-overview} 所示。
 
 \begin{figure}[htbp]
     \centering
@@ -332,15 +332,31 @@ ZenFS 是一个 RocksDB 的文件系统插件，它利用 RocksDB 的文件系�
     \label{zenfs-overview}
 \end{figure}
 
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.8\textwidth]{fig/zns-write}
+    \caption{ZNS 多线程完全覆盖写入负载下吞吐量表现}
+    \label{zns-write}
+\end{figure}
+
 ZenFS 是一种特殊的“文件系统”。与其说是一种文件系统，不如说是一种全新的软硬件协同的系统中的一部分。它通过尽量将原本不可知的 FTL 映射和垃圾回收的过程暴露给上层，使得上层可以更好地利用 SSD 的特性。ZenFS 通过将文件分成多个区域并利用写入生命周期提示来共同定位具有相似生命周期的数据，与传统的块设备相比，系统写入放大大大降低了。ZenFS 确保文件系统或磁盘上没有后台垃圾收集，从而提高吞吐量、尾部延迟和磁盘耐久性方面的性能。
 
 硬件方面，ZenFS 基于 Zoned Storage SSD 和 ZNS（Zoned Namespaces）。
 
-ZNS 是 NVMe 最新标准的一部分，它是专用于特殊 SSD 的通用接口，能够将更多的信息暴露到主机上，利用主机的应用场景信息来优化 SSD 的性能。而 Zoned Storage SSD 就是专门为 ZNS 而设计的 SSD，它将 SSD 的内部划分为多个区域，每个区域都有自己的写入指针，不支持随机写入而是只支持从当前写指针写入，从而尽可能地避免了底层主控上的逻辑映射和垃圾回收。普通 SSD 的主控掌握了逻辑地址到物理地址的映射，并且在主机不可控的情况下执行垃圾回收（尽管有 Trim 命令的支持），而 Zoned Storage SSD 的垃圾回收机制是由主机来控制的，这样就可以最大程度上地减小写入放大和读写波动，并且能够完全消除硬件预留的空间，从而提高了 SSD 的性能利用率。
+ZNS 是 NVMe 最新标准的一部分，它是专用于特殊 SSD 的通用接口，能够将更多的信息暴露到主机上，利用主机的应用场景信息来优化 SSD 的性能。而 Zoned Storage SSD 就是专门为 ZNS 而设计的 SSD，它将 SSD 的内部划分为多个区域，每个区域都有自己的写入指针，不支持随机写入而是只支持从当前写指针写入，从而尽可能地避免了底层主控上的逻辑映射和垃圾回收。普通 SSD 的主控掌握了逻辑地址到物理地址的映射，并且在主机不可控的情况下执行垃圾回收（尽管有 Trim 命令的支持），而 Zoned Storage SSD 的垃圾回收机制是由主机来控制的，这样就可以最大程度上地减小写入放大和读写波动，并且能够完全消除硬件预留的空间，从而提高了 SSD 的性能利用率。Zones 的地址空间和写逻辑如图 \ref{zns} 所示。
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.8\textwidth]{fig/zns}
+    \caption{单个 Zone 内的写逻辑}
+    \label{zns}
+\end{figure}
 
 硬件方面的尝试其实不止 ZNS 一种。在利用硬件进行 SSD 存储优化的赛道上，有过许多新奇的软硬件技术。Intel 的傲腾就是其中之一，它利用全新的 3D XPoint 相变存储介质，将 SSD 的读写性能提升到了一个新的高度。但是傲腾的缺点也很明显，那就是成本高昂，而且只有 Intel 自家的 CPU 才能够完全发挥傲腾的性能。而 ZNS 和 Zoned Storage SSD 的优势在于，它们是 NVMe 的标准，任何厂商都可以按照标准来生产。而且 ZNS 和 Zoned Storage SSD 的实际生产成本并不高，硬件上主控的计算压力减少了，也释放了更多原来的预留空间，所以大量生产后成本会比现在的 SSD 还要低，因此在可以遇见的未来，ZNS SSD 还会更加普及。
 
 除了傲腾，还有 Open-Channel SSD（OCSSD）。它的主要优化点在于，它将 SSD 的主控和垃圾回收的功能都放到了主机上，而 SSD 只负责读写数据。这样做的好处是，主机可以根据自己的应用场景来优化 SSD 的性能，而且 SSD 的成本也会降低。但是这样做的缺点也很明显，那就是主机的计算压力会变大，而且主机的应用场景也会受到限制。它与 Zoned Storage SSD 的区别主要在于，OCSSD 是将 FTL 放置在主机端，从而减小 SSD 上主控的 DRAM 成本等，而 Zoned Storage SSD 则干脆基本放弃了细粒度的 FTL，只在非常大的 Zone 粒度上做了大块逻辑映射和磨损均衡，从而进一步地让 SSD 服务于计算和存储本身。
+
+在硬件实现上，Zoned Storage SSD 可以设置 Zone 的类型。Zone 可以分为两类：Seq Zone 和 Conv Zone。Seq Zone 正如之前介绍的一样，可以随机读取，但是只能从指定的写指针位置写入数据。而 Conv Zone 则基本可以看作是普通的 SSD，主控仍然会维护这部分地址的 FTL ，所以这部分 Zones 可以像传统 SSD 一般随机读写。这样分类 Zones，更多地是为了兼容现有的应用场景，因为现有的应用场景中，随机读写的需求还是非常多的。而 Seq Zone 则是为了更好地适应新的应用场景，因为新的应用场景中，随机读写的需求并不多，而且 Seq Zone 的性能也更好。
 
 软件方面，ZenFS 则是利用 RocksDB 的文件系统接口将文件放置到原始分区块设备上的区域中。
 
@@ -368,3 +384,362 @@ RocksDB 的 LST-Tree 有多个层次，每个层次都有自己的 SSTable。在
     \label{zenfs}
 \end{figure}
 
+\subsubsubsection{Zone}
+
+\begin{lstlisting}
+  class Zone {
+    ZonedBlockDevice *zbd_;
+    ZonedBlockDeviceBackend *zbd_be_;
+    std::atomic_bool busy_;
+    
+    uint64_t start_;//起始物理地址
+    uint64_t capacity_; /* remaining capacity */
+    uint64_t max_capacity_;
+    uint64_t wp_;
+    Env::WriteLifeTimeHint lifetime_;
+    std::atomic<uint64_t> used_capacity_;
+  }  
+\end{lstlisting}
+
+这里的 Zone 对应的就是设备上的 Zone，不过在 ZenFS 所管理的 Zones 中，只支持 Seq Zone，所以这里的 Zone 也只会是 Seq Zone。
+
+一个Zone需要有所属块设备，起始地址和写指针，生命周期和空间相关的维护。
+Zone中的方法有重置Zone，判断是否为空或者是否写满，往写指针后面添加数据等等。
+
+\subsubsubsection{ZoneList}
+
+\begin{lstlisting}
+  class ZoneList {
+    private:
+     void *data_;
+     unsigned int zone_count_;
+   }   
+\end{lstlisting}
+
+由于一个 Zoned Storage SSD 上的 Zone 一般比较大，Zone 的数量并不多，所以 ZenFS 要求数据后端要能够快速地提供一个指向 Zones 信息列表的指针，然后通过这个指针就可以快速地求取 Zones 的信息，例如某个 Zone 的起始地址、容量、写指针、是否下线、是否显式打开等。
+
+\subsubsubsection{ZonedBlockDeviceBackend}
+
+ZonedBlockDeviceBackend是用来和底层设备交互需要经过的接口，这个接口将底层的ZoneList全部抽象成内存中连续的ZoneList并进行操作。
+
+在 \verb|zbdlib_zenfs.h| 以及 \verb|zbdlib_zenfs.cc| 实现接口以方便上层对底层zbd的访问。
+
+在\verb|zonefs_zenfs.h|以及\verb|zonefs_zenfs.cc|的实现是将上层对zbd的访问通过posix的读写文件方式给包装起来，从而能够访问到被 ZoneFS 包装过后的实际的 Zone。
+
+\begin{lstlisting}
+  class ZonedBlockDeviceBackend {
+    public:
+     uint32_t block_sz_ = 0;
+     uint64_t zone_sz_ = 0;
+     uint32_t nr_zones_ = 0;
+   }   
+\end{lstlisting}
+
+backend有两种类型分别是：
+
+\begin{lstlisting}
+  enum class BackendType {
+    kBlockDev,
+    kZoneFS,
+  };
+\end{lstlisting}
+
+当然，在我们实现了 RAID 之后，这里添加了 backend 类型 kRAID，用来表示这个 backend 是一个 被 RAID 后的数据后端。
+
+\subsubsubsection{ZonedBlockDevice}
+
+\begin{lstlisting}
+  class ZonedBlockDevice {
+    private:
+     std::unique_ptr<ZonedBlockDeviceBackend> zbd_be_;
+     std::vector<Zone *> io_zones;//用于io的zone
+     std::vector<Zone *> meta_zones;//用于保存元信息的zone
+     time_t start_time_;
+     std::shared_ptr<Logger> logger_;
+     uint32_t finish_threshold_ = 0;
+     std::atomic<uint64_t> bytes_written_{0};
+     std::atomic<uint64_t> gc_bytes_written_{0};// 垃圾回收转移的字节数目
+   
+     std::atomic<long> active_io_zones_;//分配io_zone时需要用锁
+     std::atomic<long> open_io_zones_;
+     /* Protects zone_resuorces_  condition variable, used
+        for notifying changes in open_io_zones_ */
+     std::mutex zone_resources_mtx_;
+     std::condition_variable zone_resources_;
+     std::mutex zone_deferred_status_mutex_;
+     IOStatus zone_deferred_status_;
+   
+     std::condition_variable migrate_resource_;
+     std::mutex migrate_zone_mtx_;
+     std::atomic<bool> migrating_{false};
+   
+     unsigned int max_nr_active_io_zones_;
+     unsigned int max_nr_open_io_zones_;
+   
+     std::shared_ptr<ZenFSMetrics> metrics_;//todo
+   }   
+\end{lstlisting}
+
+\textbf {Open函数}
+
+用来打开一个ZonedBlockDevice，流程如下：
+
+\begin{itemize}
+  \item 首先获取最大活跃io\_zones数目和最大可打开io\_zones，这里保留了几个zone用于metadata存储，一个额外的Zone用于extent migration，即Extent合并时使用的辅助空间。
+  \item 从backend中获取已有zones分配3个meta\_zones。将剩余的非离线状态的可获得的zone放入io\_zones中。遍历的过程可统计当前活跃zone的数目。
+\end{itemize}
+
+处于离线状态的块，也就是offline，指的是这些块已经在硬件层面检测到错误，不可用了，需要被替换掉。
+
+\textbf {Get*Space函数}：顾名思义，用来获取诸如已经使用空间，空闲空间以及可回收空间大小
+
+\textbf {Log*函数}：用来输出日志，获取zone的整体使用情况，每个zone单个使用情况以及垃圾空间占比等。
+
+\textbf {分配zone区域方法}
+
+ZonedBlockDevice重要的功能应该是操作zone，其分配释放相关操作：
+
+\begin{itemize}
+\item ApplyFinishThreshold将剩余空间小于预设的块给finish掉，finish操作指的是把一个zone的写指针移动到zone末尾，剩余容量减为0。
+\item FinishCheapestIOZone将一个最小剩余空间的zone给finish。
+\item GetBestOpenZoneMatch将一个当前的文件生命周期和每一个io\_zone进行生命周期对比，分配一个生命周期大于当前文件的生命周期且最接近的zone。
+\item AllocateEmptyZone，顾名思义是分配一块空的zone。
+\item ReleaseMigrateZone，顾名思义是释放migrate\_zone (todo migrate zone是用来干嘛的)。
+\item TakeMigrateZone，选择一块最优zone当作migrate\_zone。
+\item AllocateIOZone，在保持max\_active\_io\_zones的数量的前提下分配一块zone。
+\item Read，从偏移offset处读n个byte吧应该是，这里边用了ZonedDeviceBackend提供的Read接口。
+\end{itemize}
+
+而ZonedBlockDevice的读写数据，则基本直接调用ZonedBlockDeviceBackend的相关接口，即交给下一层处理。
+
+\subsubsubsection{Snapshot}
+
+ZenFS 的 Snapshot 功能，有多种存储结构的 Snapshot，其记录下某一个确定时间的各个结构的基本信息，从而实现 WAL 结构下的数据一致性保持和快照恢复功能。
+
+几种 Snapshot 的存储结构如下：
+
+\begin{lstlisting}
+  // ZBD设备快照记录设备的空闲空间（free_space），已使用空间（used_space）和可回收空间（reclaimable_space）。
+  class ZBDSnapshot {
+    public:
+     uint64_t free_space;//空闲空间
+     uint64_t used_space;//已使用空间
+     uint64_t reclaimable_space;//可回收空间
+   }
+
+   // Zone快照记录了Zone区域的开始地址（start），写指针（wp），以及容量相关信息。
+   class ZoneSnapshot {
+    public:
+     uint64_t start;//Zone开始地址
+     uint64_t wp;//写指针
+   
+     uint64_t capacity;//容量
+     uint64_t used_capacity;//已用容量
+     uint64_t max_capacity;//最大容量
+   }
+   class ZoneExtentSnapshot {
+    public:
+     uint64_t start;//todo
+     uint64_t length;//Extent长度
+     uint64_t zone_start;//todo
+     std::string filename;//Extent所属文件名
+   }
+   // 论文中提到过一个文件拥有多个extent，extent不会跨Zone存储，在这些数据结构中可以看出。
+   class ZoneFileSnapshot {
+    public:
+     uint64_t file_id;//顾名思义 file的id
+     std::string filename;//文件名
+     std::vector<ZoneExtentSnapshot> extents;//文件的extents快照集合
+   }
+   // 这里的快照便是之前所有快照的组合，记录了整个 ZenFS 设备的重要状态。
+   class ZenFSSnapshot {
+    public:
+     ZBDSnapshot zbd_;
+     std::vector<ZoneSnapshot> zones_;
+     std::vector<ZoneFileSnapshot> zone_files_;
+     std::vector<ZoneExtentSnapshot> extents_;
+   };
+   
+\end{lstlisting}
+
+\subsubsubsection{ZoneExtent}
+
+ZoneFs的文件内容是由多个extent组成的，每个extent都放在一个zone里面，extent不能跨zone存储。
+
+\begin{lstlisting}
+  class ZoneExtent {
+    public:
+     uint64_t start_;// 物理起始地址
+     uint64_t length_;// extent的长度
+     Zone* zone_;// 所属zone指针
+   
+     explicit ZoneExtent(uint64_t start, uint64_t length, Zone* zone);
+     Status DecodeFrom(Slice* input);
+     void EncodeTo(std::string* output);
+     void EncodeJson(std::ostream& json_stream);
+   };   
+\end{lstlisting}
+
+\subsubsubsection{ZoneFile}
+
+\begin{lstlisting}
+  class ZoneFile {
+    private:
+     const uint64_t NO_EXTENT = 0xffffffffffffffff;
+   
+     ZonedBlockDevice* zbd_;
+   
+     std::vector<ZoneExtent*> extents_;
+     std::vector<std::string> linkfiles_;
+   
+     Zone* active_zone_;
+     uint64_t extent_start_ = NO_EXTENT;
+     uint64_t extent_filepos_ = 0;
+   
+     Env::WriteLifeTimeHint lifetime_;
+     IOType io_type_; /* Only used when writing */
+     uint64_t file_size_;
+     uint64_t file_id_;
+   
+     uint32_t nr_synced_extents_ = 0;
+     bool open_for_wr_ = false;
+     std::mutex open_for_wr_mtx_;
+   
+     time_t m_time_;
+     bool is_sparse_ = false;
+     bool is_deleted_ = false;
+   
+     MetadataWriter* metadata_writer_ = NULL;
+   
+     std::mutex writer_mtx_;// zonefs的读写锁
+     std::atomic<int> readers_{0};
+   
+    public:
+     static const int SPARSE_HEADER_SIZE = 8;
+    }   
+\end{lstlisting}
+
+ZoneFile是ZenFS中的文件抽象，其记录了文件的元数据信息，包括文件名和路径、时间、文件id、文件大小、文件类型、文件的extents等。
+
+zonefile在操作时只会操作一个active\_zone，同时文件记录了生命周期，读写锁等等。
+
+其中实现的方法有稀疏文件append，所谓稀疏文件就是除了在zone中保存了有效数据信息之外还保存了有效数据的长度信息，如图 \ref{sparse-zone} 所示。
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.8\textwidth]{fig/sparse_zone}
+  \caption{ZoneFile 稀疏文件}
+  \label{sparse-zone}
+\end{figure}
+
+sparse方式的zone中会将长度记录计入，而普通的zone只会一直append文件中的extent。sparse文件能够更加灵活地管理文件的空间，但是会比非sparse文件多一个长度字段信息。
+
+除此之外，zonefs还有实现了RocksDB的FSWritableFile接口以支持顺序写的方法，实现了FSSequentialFile接口以实现顺序读，FSRandomAccessFile接口以实现随机读。
+
+\subsubsubsection{SuperBlock}
+
+\begin{lstlisting}
+  class Superblock {
+    uint32_t magic_ = 0;
+    char uuid_[37] = {0};
+    uint32_t sequence_ = 0;
+    uint32_t superblock_version_ = 0;
+    uint32_t flags_ = 0;
+    uint32_t block_size_ = 0; /* in bytes */
+    uint32_t zone_size_ = 0;  /* in blocks */
+    uint32_t nr_zones_ = 0;
+    char aux_fs_path_[256] = {0};
+    uint32_t finish_treshold_ = 0;
+    char zenfs_version_[64]{0};
+    char reserved_[123] = {0};
+   }  
+\end{lstlisting}
+
+ZenFS 的 SuperBlock 超级块相比其他文件系统的超级块要简单很多，其主要记录了一些基本信息，包括魔数、文件系统的版本、block的大小、zone的大小、zone的数量、辅助文件系统路径，之后大部分的信息都是保留字段。
+
+ZenFS 的靠近实际硬件的设计使得它更加简洁高效，但是它的预留修改空间也留足了，为我们今后的修改优化提供了便利。我们全盘 RAID 的实现就是利用了它的超级块的预留空间。
+
+\subsubsubsection{ZenMetaLog}
+
+\begin{lstlisting}
+  class ZenMetaLog {
+    uint64_t read_pos_;
+    Zone* zone_;
+    ZonedBlockDevice* zbd_;
+    size_t bs_;
+  }  
+\end{lstlisting}
+
+ZenMetaLog 是 ZenFS 的元数据日志格式，是 ZenFS 非常重要的数据存储结构。
+
+zenmetalog加入的record是如图\ref{meta_form}形式，首先存储的是由长度和数据形成的冗余码，然后是数据长度，再是实际的数据。
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.8\textwidth]{fig/meta_form}
+  \caption{ZenMetaLog Record}
+  \label{meta_form}
+\end{figure}
+
+每一次roll的操作都会重新开一个zone来记录metadata信息，时机是当这个zone写满了todo，而一个新的metazone的内容首先会加入下面内容，此时记录的是文件系统的瞬时状态也即snapshot，当然这些snapshot是用record的形式加入的（图\ref{roll_metazone_init}）。
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.8\textwidth]{fig/roll_metazone_init}
+  \caption{ZenMetaLog Roll}
+  \label{roll_metazone_init}
+\end{figure}
+
+在update，replace或是delete文件时，都会按照如图\ref{manipulate_form}格式包装成record加入metalog。
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.8\textwidth]{fig/manipulate_form}
+  \caption{ZenMetaLog 格式}
+  \label{manipulate_form}
+\end{figure}
+
+\subsubsubsection{ZenFS}
+
+\begin{lstlisting}
+  class ZenFS : public FileSystemWrapper {
+    ZonedBlockDevice* zbd_;
+    std::map<std::string, std::shared_ptr<ZoneFile>> files_;// ZoneFile
+    std::mutex files_mtx_;
+    std::shared_ptr<Logger> logger_;
+    std::atomic<uint64_t> next_file_id_;
+  
+    Zone* cur_meta_zone_ = nullptr;
+    std::unique_ptr<ZenMetaLog> meta_log_;// 元信息
+    std::mutex metadata_sync_mtx_;
+    std::unique_ptr<Superblock> superblock_;// 超级块
+  
+    std::shared_ptr<Logger> GetLogger() { return logger_; }
+  
+    std::unique_ptr<std::thread> gc_worker_ = nullptr;// 垃圾回收
+    bool run_gc_worker_ = false;
+  }  
+\end{lstlisting}
+
+\textbf{GC\_WORKER垃圾回收}
+
+当全局zone里边的free空间小于一定比例之后，gc\_worker便开始了垃圾回收工作，核心思想便是：
+
+收集需要垃圾回收的zone，即zone的剩余空间满足一定的条件就进行回收，之后将zone中对应的extent移动到与当前zonefile生命周期相匹配的zone，这个zone是顺序写的，这个移动extent的操作叫做migrate操作。
+
+ZenFS 内判断当前zone是否需要回收的条件还是比较简单的，是一个简单的容量判断。当文件系统 GC 时，找到超过容量的 Zone，再找到一个使用较少的 Zone，将超过容量的 Zone 中的数据迁移到使用较少的 Zone 中，就完成了一次 GC。这里ZenFS 简单的实现为我们之后的优化提供了便利。
+
+\textbf{MOUNT逻辑}：
+
+\begin{itemize}
+  \item 读入所有metazone并且读出superblock，选择seq序号最大的superblock的meta作为恢复zone。
+  \item 若是readonly的，则从磁盘同步一次数据。
+  \item 若是可写的，并且用一个新的metazone记录当前文件系统的瞬时状态（superblock以及各个zonefile的编码）。同时要将系统的未用zone重置一下。最后开启垃圾回收线程。
+\end{itemize}
+
+\textbf{MKFS逻辑}：
+
+\begin{itemize}
+  \item 选择一个metazone作为log记录的zone。
+  \item 写入superblock和各个zonfile编码到metazone中。
+\end{itemize}
