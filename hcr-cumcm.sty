@@ -82,19 +82,26 @@
     appendix/name = {附录}
 }
 
-%% Hyperref
-\AtBeginDocument {%
-    \hypersetup{%
-        pdftitle={\@title},%
-        hidelinks,%
-        bookmarksnumbered=true%
-    }
-}
-
 %% Code Verbatim Environment
 \definecolor{dkgreen}{rgb}{0,0.6,0}
 \definecolor{gray}{rgb}{0.5,0.5,0.5}
 \definecolor{mauve}{rgb}{0.58,0,0.82}
+\definecolor{Teal}{RGB}{0,128,128}
+
+%% Hyperref
+\AtBeginDocument {%
+    \hypersetup{%
+        pdftitle={\@title},%
+        % hidelinks,%
+        colorlinks=true,
+        urlcolor=Teal,
+        linkcolor=Teal,
+        % urlcolor=[RGB]{0,0.5,0.5},
+        % linkcolor=[RGB]{0,0.5,0.5},
+        linkbordercolor=Teal,
+        bookmarksnumbered=true%
+    }
+}
 
 \lstset{frame=tb,%
     aboveskip=3mm,%

@@ -31,6 +31,13 @@ AquaFS 是一个以 ZenFS 为原型的适用于 Zoned Storage SSD 的文件系�
     \hline
     融合通用文件系统               & 进度约 50\%     & \checkmark 基于 FUSE 和 Rust 完成一个 Ext2 兼容文件系统 \\
                                   &                & $\square$ 将进一步研究与 ZenFS 的结合方式 \\
+                                  &                & $\square$ 将进一步研究智能数据请求分类方法 \\
     \hline
   \end{tabular}
 \end{table}
+
+使用 RocksDB 随机读写测试来测试 RAID 模块实现的数据正确性，结果如表 \ref{test-data} 所示。在全盘、分区 RAID 情况下进行 RocksDB 数据库读写并且测试通过，RAID 实现的正确性可以得到验证。
+
+使用 \verb|io_uring| 等优化 IO 后，进行单线程读写测试，结果如表 \ref{raid0-speedup-table} 所示。经过异步 IO 单线程读写优化，在不同 RAID 配置下能够充分利用硬件并行性从而提高整体带宽利用率。
+
+对智能调参模块进行测试，由图 \ref{test-turnner}，智能调参模块在 RocksDB 随机写入测试中，能够根据系统运行数据调整文件系统参数，从而逐步提高数据吞吐量。

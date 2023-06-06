@@ -247,5 +247,14 @@ ZONE_SIZE_PARAM = 32
 
 平均吞吐量是16935800.25。相比于上一次的配置参数，吞吐量提升了23.87\%。
 
+将不同轮次的调参结果进行对比如图 \ref{test-turnner} 所示，系统能够根据系统运行数据调整文件系统参数，从而逐步提高数据吞吐量。
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.85\textwidth]{fig/test-turnner.png}
+  \caption{ 调参测试结果对比 }
+  \label{test-turnner}
+\end{figure}
+
 后续还将尝试测试触发gc来测试gc的参数，以及尝试融合文件系统后对整体的inode以及其他参数进行自动调整。
 
