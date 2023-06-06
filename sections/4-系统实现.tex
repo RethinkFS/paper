@@ -205,7 +205,128 @@ Zone Raid $n$ 为向上层暴露出的可读写数据 Zone 区域，而其中可
 
 同时，它还提供了 setOffline 功能，可以在发现设备故障时，将故障设备的所有分区设置为 Offline 状态，以便后续的故障处理。
 
+\subsubsection{分区 RAID 故障处理}
+
+在分区 RAID 故障处理方面，我们实现了基于分区 RAID 的故障处理方案。其主要思路是，当发现设备故障时，将故障设备的所有分区设置为 Offline 状态，然后将所有的分区重新映射到其他设备上，以保证数据的可用性。
+
+由于在调研中我们发现，Nand Flash 向上提供的数据一般含有 ECC 校验和纠错，且 ZenFS 中的 Record 也有 CRC 校验和，所以我们认为在数据传输过程中，较少比特数据的完整性是可以保证的。所以，我们在实现分区 RAID 故障处理时，仅考虑大块数据的完整性恢复，而不考虑小块数据的完整性。
+
+\begin{lstlisting}
+  // 在数据操作函数中
+  if (r < 0) {
+    auto status = ScanAndHandleOffline();
+    if (status.ok()) {
+      // retry this read
+      return Read(buf, size, pos, direct);
+    } else {
+      Error(logger_, "failed to restore data: %s", status.getState());
+      return r;
+    }
+  }
+\end{lstlisting}
+
+ScanAndHandleOffline 函数将扫描当前所有盘的数据状态，如果发现有盘处于 Offline 状态，则将所有的分区重新映射到其他设备上，并根据 RAID 逻辑进行数据恢复。
+
+当前由于仅实现了 RAID 0 和 RAID 1 的数据逻辑，所以暂时仅支持 RAID 1 分区的数据恢复。当发现 RAID 1 分区的数据不一致时，将重新选择一个 Dev Zone，将数据恢复到新的 Dev Zone 上。
+
+当前的故障处理逻辑还相对比较简单，在复赛中实现更多 RAID 逻辑后，将进一步改进此部分的故障处理逻辑，如增加 RAID 5 的故障处理逻辑、增加故障恢复的并发度等。
+
 \subsection{AquaFS 的 IO 加速实现}
+
+在上文中，我们已经介绍了 AquaFS 的 RAID 方案，但是由于是比较初级的版本，很多代码并没有进行并行优化，仍然是单线程的。所以，我们在实现 IO 加速方面，主要是对 RAID 下的 IO 操作进行并行优化。
+
+在我们实现之前，ZenFS 的 IO 优化主要是从 RocksDB 中继承而来。RocksDB 中可以使用 Direct IO 来读写文件，以避免数据在用户态和内核态之间的拷贝。其 Direct IO 优化既可以用于 RocksDB 的 PosixFileSystem 常规文件系统后端，也可以用于 RocksDB 的 ZenFS 文件系统后端。
+
+Direct IO 主要的优化逻辑是，将用户态的数据缓冲区直接映射到内核态的页缓存中，从而避免了数据在用户态和内核态之间的拷贝。通过 Direct IO 打开的设备，从设备中获得的数据将直接写入在用户态的数据缓冲区中，而不是先写入内核态的页缓存中，从而减少了一次数据拷贝。
+
+Direct IO 的使用也非常简单，只需要在打开文件时，将 O\_DIRECT 标志传入即可。但是，由于 Direct IO 的使用需要满足一些条件，如文件的偏移量和长度需要是当前系统内存页大小的整数倍，所以在使用 Direct IO 时，需要对文件的偏移量和长度进行调整。
+
+我们发现，在我们的加速方案中，Direct IO 可以与更多的 IO 加速方案并存。如在我们的加速方案中，我们可以使用 io\_uring 来加速 IO 操作，而 io\_uring 也可以与 Direct IO 并存。
+
+在加速方案选择上，我们选择了 io\_uring 方案。当前 Linux 系统上有许多 IO 加速方案，如 AIO、io\_uring、libaio 等，如图 \ref{io-speedup} 所示。
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.7\textwidth]{fig/io-speedup.png}
+  \caption{IO 加速方案}
+  \label{io-speedup}
+\end{figure}
+
+io\_uring 是 kernel natvie aio 的一种，它是 Linux Kernel 5.1 版本加入一个特性。io\_uring 围绕高效进行设计，其设计了一对共享的 ring buffer 用于应用和内核之间的通信，通过该设计实现了如下的三个好处：
+
+\begin{enumerate}
+  \item 避免在提交和完成事件中存在内存拷贝；
+  \item 避免了 libaio 中在提交和完成任务的时候系统调用过程；
+  \item 该队列采用了无锁的访问模式，通过内存屏障减少了竞争。
+\end{enumerate}
+
+io\_uring 的使用也非常简单，只需要提交 SQE 到 ring buffer 中，然后等待 CQE 即可。
+由于其简单使用、高效的设计，我们选择了 io\_uring 作为我们的 IO 加速方案。
+
+其实 io\_uring 在 RocksDB 的 PosixFileSystem 文件系统后端中已经有可选的实现，但是它并没有被实现到 ZenFS 后端中，ZenFS 的数据读写还是只能使用 Direct IO 进行优化。于是，我们在 ZenFS 的文件系统后端中实现了 io\_uring 的优化，从而进一步加速了 ZenFS 的 IO 操作。
+
+为了进一步增大 IO 加速的效果，我们还实现了 IO 操作的批处理。在原版 ZenFS 中，IO 操作是以单个系统调用的形式进行的，即每次 IO 操作都是单个请求。但是如果将多个 IO 操作打包成一个批处理请求，可以进一步提高 IO 操作的效率，尤其是单 IO 请求的效率。
+
+为了实现 IO 操作的批处理，我们在 AquaZFS 的文件系统后端中实现了 IO 请求的分割和合并，并将请求全部打包成一个批处理请求，然后一次性提交给 io\_uring，从而实现了 IO 操作的批处理。
+
+除了上述优化处理，我们还使用 C++ 20 的协程特性，进一步增大了代码的并行性。
+在调研过程中，我们找到了一个 C++ 实现的 io\_uring 绑定库，其向外提供了协程接口，可以在协程中使用 io\_uring。我们将其移植到了 AquaFS 中，从而实现了在协程中使用 io\_uring。
+
+有关逻辑可以在数据操作相关的函数中找到，如下以读数据函数 Read 为例：
+
+\begin{lstlisting}
+  using req_item_t = std::tuple<int, char *, uint64_t, off_t>;
+  std::vector<req_item_t> requests;
+  std::vector<ZbdlibBackend *> bes(nr_dev());
+  for (decltype(nr_dev()) i = 0; i < nr_dev(); i++) {
+#ifdef ROCKSDB_USE_RTTI
+    bes[i] = dynamic_cast<ZbdlibBackend *>(devices_[i].get());
+    assert(bes[i] != nullptr);
+#else
+    bes[i] = (ZbdlibBackend *)(devices_[i].get());
+#endif
+  }
+  while (size > 0) {
+    // ...
+    requests.emplace_back(fd, buf, req_size, mapped_pos);
+    // ...
+  }
+\end{lstlisting}
+
+如上所示，我们首先将 IO 请求分割成多个小的 IO 请求，将这些请求收集到 std::vector 中。
+由于 ZNS 支持随机读，所以可直接将 IO 请求加入到 std::vector 中，而无需考虑 IO 请求的顺序。
+
+收集到 IO 读请求后，我们将这些请求打包成一个批处理请求，然后一次性提交给 io\_uring，如下所示：
+
+\begin{lstlisting}
+  uio::io_service service;
+  // ...
+  service.run([&]() -> uio::task<> {
+    std::vector<uio::task<int>> futures;
+    for (auto &&req : requests) {
+      uint8_t flags = 0;
+      // read do not need order
+      // if (req != *req_list.second.cend()) flags |= IOSQE_IO_LINK;
+      futures.emplace_back(service.read(std::get<0>(req), std::get<1>(req),
+                                        std::get<2>(req), std::get<3>(req),
+                                        flags) |
+                           uio::panic_on_err("failed to read!", true));
+    }
+    for (auto &&fut : futures) co_await fut;
+  }());
+\end{lstlisting}
+
+在作为举例的 Read 函数中，我们首先创建了一个 service 对象，然后使用 run 方法启动协程，在协程中逐个将请求提交到 SQE 中，然后等待所有的 CQE 即可。这里的 flags 参数用于指定 IO 请求的属性，如 IOSQE\_IO\_LINK 表示该 IO 请求是一个批处理请求中的一部分。由于我们的 IO 请求是无序的，所以我们不需要使用 IOSQE\_IO\_LINK。
+
+在写操作相关的函数中，相比于读操作，还需要基于 ZNS 的顺序写特性考虑更多的因素，如下所示：
+
+\begin{lstlisting}
+  using req_item_t = std::tuple<char *, uint64_t, off_t>;
+  // <dev, zone> -> vec<ordered req>
+  std::map<std::pair<int, idx_t>, std::vector<req_item_t>> requests;
+\end{lstlisting}
+
+我们首先将 IO 请求按照设备和 Zone 序号进行分组，然后将每个 Zone 内的 IO 请求按照顺序进行排序，最后将这些请求收集到 std::vector 中。而在提交 IO 请求时，我们需要将这些请求按照顺序依次提交。
 
 \subsection{AquaFS 文件系统的智能调参模块实现}
 
