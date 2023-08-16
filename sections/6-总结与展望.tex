@@ -6,7 +6,7 @@
 
 AquaFS 采用模块化设计，不同模块各司其职，分别负责不同的功能，使得 AquaFS 的功能更加清晰，易于维护和扩展。
 
-在当前初赛阶段，我们实现了 AquaFS 的一些核心功能，包括：
+在当前初赛阶段，我们实现了 AquaFS 的一些功能，包括：
 
 \begin{itemize}
   \item 智能调参模块
@@ -21,7 +21,6 @@ AquaFS 采用模块化设计，不同模块各司其职，分别负责不同的�
     \item 分区 RAID 动态 RAID 逻辑实现
     \item 分区 RAID 数据块错误处理和数据恢复
   \end{enumerate}
-  \item IO 加速实现：实现基于 Direct IO + io\_uring + C++协程 的高性能 IO 加速
   \item ExtFS 辅助文件系统
 \end{itemize}
 
@@ -46,12 +45,22 @@ AquaFS 采用模块化设计，不同模块各司其职，分别负责不同的�
   paper          : 初赛技术报告 & 125 & 2895 & 252 & 2643 \\ 
   AquaFS         : 整个系统通过 \verb|submodule| 的整合 & 55 & 1904 & 126 & 1778 \\ 
   rocksdb        : 配合开发修改参数 & 92 & 131 & 80 & 51 \\ 
-  liburing4cpp   : 测试 C++ 协程 io\_uring & 1 & 1 & 1 & 0 \\ 
-  nvmevirt       : 测试 ZNS 仿真 & 2 & 2 & 2 & 0 \\ 
   \end{tabular}
 \end{table}
 
-\subsection{创新点和未来}
+\subsection{决赛阶段}
+
+在决赛阶段，我们对AquaFS实现了进一步的完善：
+
+\begin{itemize}
+  \item RAID方面
+  \begin{enumerate}
+    \item 磨损均衡RAID
+    \item 实现了全盘 RAID5
+    \item 分区 RAID 数据块错误处理和数据恢复
+  \end{enumerate}
+  \item IO 加速实现：实现基于 Direct IO + io\_uring + C++协程 的高性能 IO 加速
+\end{itemize}
 
 在初赛阶段，我们总结 AquaFS 的已经实现或者部分实现了的创新点主要有以下几点：
 
@@ -68,19 +77,14 @@ AquaFS 采用模块化设计，不同模块各司其职，分别负责不同的�
   \item \textbf{更加灵活}：ZenFS 由于其简单而参数较少，且都由上层软件适配调整，而 AquaFS 可以通过调整参数、融合文件系统等方式提升其场景适用性，为没有软件适配的应用场景提供支持。
 \end{itemize}
 
-为了完成这些创新点，我们将在后续的比赛阶段继续努力，完成 AquaFS 的全部功能，包括：
+为了完成这些创新点，我们希望在未来有时间可以继续努力，完成 AquaFS 的全部功能，包括：
 
 \begin{itemize}
   \item 完善 AquaFS 的智能调参模块，针对垃圾回收、文件系统融合等算法进行调参
   \item 完善 Data Router，实现更加智能的数据路由，包括文件系统级冗余、文件系统读写分离、inode 缓存等
-  \item 完善 AquaFS 的 IO 加速模块，实现 SPDK、xnvme 等用户态 NVMe 驱动的支持
-  \item 完善 AquaFS 的 ExtFS 辅助文件系统，实现更加智能的文件系统融合
-  \item 完善 AquaFS 的分区 RAID 功能，加强 RAID 分区分配逻辑的智能化
-  \item 对更多的测试进行量化分析，分析并提升 AquaFS 的性能
-  \item 争取获取到 ZNS SSD 设备，进行更加全面而更有说服力的测试和开发
 \end{itemize}
 
-虽然 AquaFS 在初赛阶段已经完成了部分工作，但是未来的工作仍然艰巨，还有许多问题需要解决：
+虽然 AquaFS 在比赛阶段已经完成了部分工作，但是未来的工作仍然艰巨，还有许多问题需要解决：
 
 \begin{itemize}
   \item \textbf{ZNS SSD 设备}：由于暂未申请到 ZNS SSD 设备，我们难以进行更加全面而更有说服力的测试和开发，这是迫切需要解决的问题。

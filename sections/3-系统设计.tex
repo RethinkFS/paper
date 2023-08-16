@@ -27,7 +27,7 @@ AquaFS 是一个模块化的文件系统，以下是 AquaFS 的整体架构图�
             \item 对较大的冷数据文件，分配到 Seq Zones
             \item 将一些可以异地更新的数据以 AquaFS::Extent 形式写入 AquaZFS
         \end{enumerate}
-    \item Zones Allocator：为 AquaZFS、ExtFS 提供 Zone 分配服务
+    \item Zones Allocator：为 AquaZFS、ExtFS 提供 Zone 分配服务、同时具备磨损均衡的功能
     \item Zones：
         \begin{enumerate}
             \item Seq Zones：只能顺序写的 Zones
@@ -156,16 +156,14 @@ RAID 策略信息以记录形式写入 Meta Zones 中，并使用 WAL 配合 Sna
 \begin{enumerate}
     \item 相比与 ZenFS，灵活性更强
     \begin{enumerate}
-        \item 适配没有针对优化的工作负载，智能识别适合 WAL 的数据，用更合适的方式处理
-        \item 可调整的静态、动态参数更多
+        \item 根据运行状况调整参数
         \item 提供 RAID 功能，并可以动态分配
     \end{enumerate}
     \item 数据安全性更强：RAID 功能
     \item 智能分配请求
     \begin{enumerate}
-        \item 在 Data Router 层合理分配 SST、普通数据请求
-        \item 在当前请求不适合 AquaZFS 的时候将 ExtFS 作为后备
         \item 进行读写请求分离
+        \item 进行磨损均衡的RAID分配
     \end{enumerate}
     \item 更加高效：RAID 功能、全异步 IO 加速
 \end{enumerate}
@@ -177,10 +175,17 @@ RAID 策略信息以记录形式写入 Meta Zones 中，并使用 WAL 配合 Sna
 在初赛阶段，考虑到我们的精力和人数，我们优先实现 AquaFS 文件系统的以下几个功能部分：
 
 \begin{enumerate}
-  \item AquaFS 文件系统的 RAID 实现
-  \item AquaFS 的 IO 加速实现
-  \item AquaFS 文件系统的智能调参模块实现
-  \item AquaFS 文件系统的功能和性能测试
+  \item AquaFS 文件系统的 RAID0 ， RAID1，智能分配器实现
+  \item AquaFS 文件系统的智能调参模块初步实现
+  \item AquaFS 文件系统相关 RAID 测试，智能分配器测试，调参模块初步测试
 \end{enumerate}
 
-在复赛阶段，我们将继续完善 AquaFS 文件系统其余模块的实现，包括智能数据分类、通用 VFS 文件系统接口等。
+在复赛阶段，我们将继续完善 AquaFS，完善的功能主要是下面几个模块：
+
+\begin{enumerate}
+    \item AquaFS 文件系统的 RAID5 实现
+    \item AquaFS 文件系统 RAID0 的 io uring 加速实现
+    \item AquaFS 文件系统的智能调参模块完善
+    \item AquaFS 文件系统磨损均衡模块实现
+    \item AquaFS 文件系统RAID5，磨损均衡模块测试
+\end{enumerate}

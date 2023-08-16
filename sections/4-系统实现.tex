@@ -104,6 +104,14 @@ RAID 0 在写入时，将会将数据分散写入多个设备中。类似于传�
   \item 采用了 io\_uring 加速方案，即使用 io\_uring 作为异步 IO 框架，提高 IO 吞吐量。
 \end{enumerate}
 
+RAID0的数据排列逻辑如下图所示：
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.85\textwidth]{fig/RAID0}
+  \caption{ RAID0数据排列逻辑 }
+  \label{RAID0}
+\end{figure}
+
 以 RAID 0 读为例，其未经 IO 优化的读流程如下所示：
 
 \begin{lstlisting}
@@ -253,7 +261,18 @@ ScanAndHandleOffline 函数将扫描当前所有盘的数据状态，如果发�
 
 当前由于仅实现了 RAID 0 和 RAID 1 的数据逻辑，所以暂时仅支持 RAID 1 分区的数据恢复。当发现 RAID 1 分区的数据不一致时，将重新选择一个 Dev Zone，将数据恢复到新的 Dev Zone 上。
 
-当前的故障处理逻辑还相对比较简单，在复赛中实现更多 RAID 逻辑后，将进一步改进此部分的故障处理逻辑，如增加 RAID 5 的故障处理逻辑、增加故障恢复的并发度等。
+当前的故障处理逻辑还相对比较简单，在复赛中实现更多 RAID 逻辑后，将进一步改进此部分的故障处理逻辑。
+
+在复赛中我们实现了RAID5的故障处理部分，RAID5的逻辑架构如下图所示：
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.85\textwidth]{fig/RAID5}
+  \caption{ RAID5实现方式 }
+  \label{RAID5}
+\end{figure}
+
+通过将不同设备的zone合并成一个大的zone，再默认将最后一个设备的zone设置成校验zone，可以实现简单的全盘RAID5逻辑，这样在一块zone出现错误后，可以利用一块RAID5 zone中的其余zone进行数据恢复。
 
 \subsection{AquaFS 的 IO 加速实现}
 
@@ -476,3 +495,22 @@ AquaTuner的运行算法流程如算法 \ref{alg:aquaturnner_trunning} 所示。
     \State \Return history\_best\_param;
   \end{algorithmic}
 \end{algorithm}
+
+\subsection{磨损均衡模块的实现}
+
+为了进一步提高 AquaFS 的性能，使得软硬件更加协调，我们还实现了磨损均衡模块。
+
+闪存都是有寿命的，即闪存块有擦写次数限制。一个闪存块，如果其擦写次数超过一定的值，那么该块就变得不那么可靠了，甚至变成坏块不能用了。如果不做磨损平衡，则有可能出现有些闪存块频繁拿来做擦写，这些闪存块很容易就会寿终正寝。随着不断的写人，越来越多的坏块出现，最后导致SSD在保质期前就失效。
+
+由于ZNS设备也是一种闪存设备，我们决定在其上实现一个磨损均衡模块来模拟FTL的功能。
+
+磨损均衡的实现是添加在RAID映射和底层zone之间，我们为每个设备维护一个树来记录对应zone号和使用次数，同时在每次分配zone的时候，选择上次使用次数最少的RAID zone作为分配对象进行分配。
+
+磨损均衡模块中单个设备为了磨损均衡所维护的数据结构如下图所示：
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.7\textwidth]{fig/wear_balance}
+  \caption{磨损均衡}
+  \label{wear_balance}
+\end{figure}

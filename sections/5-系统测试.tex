@@ -25,6 +25,7 @@
     全盘 RAID C & 2 & \verb|aquafs://raidc:dev:nullb0,dev:nullb1| & 通过 \\
     全盘 RAID 0 & 2 & \verb|aquafs://raid0:dev:nullb0,dev:nullb1| & 通过 \\
     全盘 RAID 1 & 2 & \verb|aquafs://raid1:dev:nullb0,dev:nullb1| & 通过 \\
+    全盘 RAID 5 & 2 & \verb|aquafs://raid5:dev:nullb0,dev:nullb1| & 通过 \\
     分区 RAID A & 2 & \verb|aquafs://raida:dev:nullb0,dev:nullb1| & 通过 \\
     \multirow{2}{*}{分区 RAID A} & \multirow{2}{*}{4} & \verb|aquafs://raida:dev:nullb0,dev:nullb1,| & \multirow{2}{*}{通过} \\
     & & \verb|dev:nullb2,dev:nullb3| & \\
@@ -137,6 +138,14 @@ db\_bench 除了表 \ref{test-data} 中的，还需要添加如下参数：
   \item 校验读出的文件和原文件是否一致
 \end{enumerate}
 
+测试流程图如下所示：
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.85\textwidth]{fig/recovery_logic}
+  \caption{ 测试流程图 }
+  \label{recovery_logic}
+\end{figure}
+
 使用 128 MiB 文件大小进行测试，测试过程如图 \ref{test-recovery} 所示。
 在测试中，AquaFS 成功地检测到了 Zone 的故障，并且成功地从其他 Zone 中恢复了数据，维护了文件系统的数据完整性。
 
@@ -145,6 +154,14 @@ db\_bench 除了表 \ref{test-data} 中的，还需要添加如下参数：
   \includegraphics[width=0.85\textwidth]{fig/test-recovery}
   \caption{ 数据恢复测试 }
   \label{test-recovery}
+\end{figure}
+
+其中，测试的RAID0和RAID5的恢复得到了正确结果：
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.85\textwidth]{fig/test_recovery_1}
+  \caption{ RAID0 RAID5数据恢复测试 }
+  \label{test-recovery_1}
 \end{figure}
 
 \subsubsection{文件系统性能测试}
