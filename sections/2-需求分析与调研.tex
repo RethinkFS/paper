@@ -332,6 +332,57 @@ RAID 思想从提出后就广泛被业界所接纳，存储工业界投入了大
 
 在ZNS设备上，我们拟实现软RAID，软 RAID 没有专用的控制芯片和 I/O 芯片，完全由操作系统和 CPU 来实现所的 RAID 的功能。现代操作系统基本上都提供软 RAID 支持，通过在磁盘设备驱动程序上添加一个软件层，提供一个物理驱动器与逻辑驱动器之间的抽象层。目前，操作系统支持的最常见的 RAID 等级有 RAID0 、 RAID1 、 RAID10 、 RAID01 和 RAID5 等。比如， Windows Server 支持 RAID0 、 RAID1 和 RAID5 三种等级， Linux 支持 RAID0 、 RAID1 、 RAID4 、 RAID5 、 RAID6 等， Mac OS X Server 、 FreeBSD 、 NetBSD 、 OpenBSD 、 Solaris 等操作系统也都支持相应的 RAID 等级。
 
+\subsubsection{Linux IO 系统演进}
+
+io\_uring 是 2019 年 Linux 5.1 内核首次引入的高性能 异步 I/O 框架，能显著加速 I/O 密集型应用的性能。通过对Linux I/O系统演进的调研，做如下概述。
+
+\subsubsection{基于 fd 的阻塞式 I/O}
+作为大家最熟悉的读写方式，Linux 内核提供了基于文件描述符的系统调用， 这些描述符指向的可能是存储文件（storage file），也可能是 network sockets：
+
+\begin{lstlisting}
+  ssize_t read(int fd, void *buf, size_t count);
+  ssize_t write(int fd, const void *buf, size_t count);
+\end{lstlisting}
+
+\subsubsection{非阻塞式 I/O}
+阻塞式之后，出现了一些新的、非阻塞的系统调用，例如 select()、poll() 以及更新的 epoll()。 应用程序在调用这些函数读写时不会阻塞，而是立即返回，返回的是一个 已经 ready 的文件描述符列表。
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.85\textwidth]{fig/none\_block\_io}
+  \caption{非阻塞IO}
+  \label{非阻塞IO}
+\end{figure}
+
+但这种方式存在一个致命缺点：只支持 network sockets 和 pipes —— epoll() 甚至连 storage files 都不支持
+
+\subsubsection{Direct I/O}
+随后出现了更加灵活和强大的方式：数据库软件（database software） 有时 并不想使用操作系统的 page cache， 而是希望打开一个文件后，直接从设备读写这个文件（direct access to the device）。 这种方式称为直接访问（direct access）或直接 I/O（direct I/O），
+
+需要指定 O\_DIRECT flag；
+需要应用自己管理自己的缓存 —— 这正是数据库软件所希望的；
+是 zero-copy I/O，因为应用的缓冲数据直接发送到设备，或者直接从设备读取。
+
+\subsubsection{异步 IO IO\_URING 框架}
+Linux原生AIO框架受限于下面的限制，这也正是io\_uring要克服的：
+
+它不支持buffered I/O, 只支持direct I/O
+它的行为有不确定性，在某些场景下会block住
+它的API不够优化，每个I/O需要两次系统调用，一次提交请求，一次等待完成
+每次提交请求需要拷贝64+8字节的数据，每次完成需要拷贝32字节
+
+io\_uring 来自资深内核开发者 Jens Axboe 的想法，他在 Linux I/O stack 领域颇有研究。 从最早的 patch aio: support for IO polling 可以看出，这项工作始于一个很简单的观察：随着设备越来越快， 中断驱动（interrupt-driven）模式效率已经低于轮询模式 （polling for completions） —— 这也是高性能领域最常见的主题之一。
+
+io\_uring 的特点在于：
+
+1.在设计上是真正异步的（truly asynchronous）。只要 设置了合适的 flag，它在系统调用上下文中就只是将请求放入队列， 不会做其他任何额外的事情，保证了应用永远不会阻塞。
+
+2.支持任何类型的 I/O：cached files、direct-access files 甚至 blocking sockets。
+
+由于设计上就是异步的（async-by-design nature），因此无需 poll+read/write 来处理 sockets。 只需提交一个阻塞式读（blocking read），请求完成之后，就会出现在 completion ring。
+
+灵活、可扩展：基于 io\_uring 甚至能重写（re-implement）Linux 的每个系统调用。
+
 \subsubsection{文件系统调参}
 
 在数据库和文件系统这些存储系统中中实现良好的性能并非易事，因为它们是复杂的系统，具有许多可调选项，这些选项几乎控制其运行时操作的许多方面。在这些系统中，配置参数是一个重要的问题。存储系统通常有许多影响其行为的参数，调整这些参数可以显着提高性能。由于大量的参数和可能的配置呈指数级增长，手动和自动调整方法都很费力。
